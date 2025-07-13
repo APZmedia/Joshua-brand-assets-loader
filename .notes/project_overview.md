@@ -23,9 +23,12 @@ Build a ComfyUI extension that provides nodes for loading brand assets and dynam
 ## Core Nodes
 
 ### APZmediaBrandAssetLoader
-- **Purpose:** Load and manage brand assets for use in workflows
-- **Inputs:** Asset source paths, asset types
-- **Outputs:** Processed brand assets ready for placement
+- **Purpose:** Comprehensive brand asset loader that handles all asset types in one node
+- **Inputs:** 
+  - API mode: Brand ID, API URL, authentication token (optional)
+  - Manual mode: File paths for logos, fonts, and color palette JSON
+- **Outputs:** All brand assets (5 logo variations, 3 font paths, color palette, brand metadata)
+- **Features:** Dual loading modes (API/Manual), optional authentication, comprehensive error handling, consistent return types
 
 ### APZmediaLogoPlacement
 - **Purpose:** Place logos dynamically in images
@@ -34,12 +37,22 @@ Build a ComfyUI extension that provides nodes for loading brand assets and dynam
 
 ## Sample User Flow
 
+### API Mode (Recommended)
 1. User installs the extension in ComfyUI
 2. User adds Brand Asset Loader node to workflow
-3. User configures asset sources and loads brand assets
-4. User adds Logo Placement node to workflow
-5. User connects image generation output to Logo Placement
-6. User configures logo positioning and styling
+3. User configures API settings (Brand ID, API URL, token optional)
+4. Node automatically loads all brand assets (logos, fonts, colors)
+5. User adds Logo Placement/Overlay nodes to workflow
+6. User connects brand assets to logo placement nodes
+7. Workflow generates images with integrated brand assets
+
+### Manual Mode
+1. User installs the extension in ComfyUI
+2. User adds Brand Asset Loader node to workflow
+3. User provides file paths for logos, fonts, and color palette JSON
+4. Node loads and validates all provided assets
+5. User adds Logo Placement/Overlay nodes to workflow
+6. User connects brand assets to logo placement nodes
 7. Workflow generates images with integrated brand assets
 
 ## Development Philosophy
