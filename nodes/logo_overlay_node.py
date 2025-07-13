@@ -30,6 +30,7 @@ class APZmediaLogoOverlay:
             "optional": {
                 "opacity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "blend_mode": (["normal", "multiply", "screen", "overlay"], {"default": "normal"}),
+                "loader_status": ("STRING", {"default": "", "multiline": False}),
             }
         }
 
