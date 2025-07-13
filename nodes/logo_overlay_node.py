@@ -4,7 +4,7 @@ import logging
 import os
 from PIL import Image
 import numpy as np
-from .global_brand_state import global_brand_state
+# from .global_brand_state import global_brand_state # Removed global state import
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -48,7 +48,7 @@ class APZmediaLogoOverlay:
         
         Args:
             background_image: Background image tensor (C, H, W) format with RGB channels
-            logo_selection: Selected logo from global brand assets
+            logo_selection: Selected logo from brand_assets
             logo_type: Logo orientation (vertical, horizontal, auto)
             position: Logo position on background
             scale_percentage: Logo size as percentage of background
@@ -67,7 +67,7 @@ class APZmediaLogoOverlay:
             background_image = self._normalize_input_shape(background_image)
             
             # Input validation
-            if not self._validate_inputs(background_image, logo_selection):
+            if not self._validate_inputs(brand_assets, background_image, logo_selection):
                 logger.error("Invalid inputs")
                 return self._create_error_overlay(background_image)
 
@@ -166,99 +166,31 @@ class APZmediaLogoOverlay:
             logger.error(f"Failed to normalize input shape: {str(e)}")
             return background_image
 
-    def _validate_inputs(self, background_image, logo_selection):
+    def _validate_inputs(self, brand_assets, background_image, logo_selection):
         """Validate input parameters."""
         try:
             # Check background image
             if not isinstance(background_image, torch.Tensor):
                 logger.error("Background image must be a PyTorch tensor")
                 return False
-            
             # Check if it's a 3D tensor with 3 channels (RGB)
             if background_image.dim() != 3 or background_image.shape[0] != 3:
                 logger.error(f"Background image must be 3D tensor with 3 channels (RGB), got shape {background_image.shape}")
                 return False
-            
             # Check if brand assets are loaded
-            # The brand_assets input is now a dictionary, so we check if it's not empty
             if not brand_assets or not isinstance(brand_assets, dict):
                 logger.error("Brand assets dictionary is empty or not provided")
                 return False
-            
             # Check logo selection
             if not logo_selection or logo_selection not in ["vertical_color", "vertical_mono", "horizontal_color", "horizontal_mono", "icon"]:
                 logger.error(f"Invalid logo selection: {logo_selection}")
                 return False
-            
             return True
-            
         except Exception as e:
             logger.error(f"Input validation failed: {str(e)}")
             return False
 
-    def _load_logo_from_global_state(self, logo_selection):
-        """Load logo from global state and detect alpha channel."""
-        try:
-            # Get logo and mask from global state
-            logo_tensor, logo_mask = global_brand_state.get_logo(logo_selection, include_mask=True)
-            
-            if logo_tensor is None:
-                logger.error(f"Logo not found in global state: {logo_selection}")
-                return None, None, False
-            
-            # Normalize logo tensor shape to (3, H, W)
-            logo_tensor = self._normalize_logo_shape(logo_tensor)
-            
-            # Check if mask has meaningful alpha (not all white)
-            has_alpha = torch.any(logo_mask < 1.0)
-            
-            return logo_tensor, logo_mask, has_alpha
-            
-        except Exception as e:
-            logger.error(f"Failed to load logo from global state: {str(e)}")
-            return None, None, False
-
-    def _normalize_logo_shape(self, logo_tensor):
-        """Normalize logo tensor to (3, H, W) format."""
-        try:
-            if not isinstance(logo_tensor, torch.Tensor):
-                logger.error("Logo tensor must be a PyTorch tensor")
-                return logo_tensor
-            
-            logger.info(f"[_normalize_logo_shape] input shape: {logo_tensor.shape}")
-            
-            # Handle different input shapes
-            if logo_tensor.dim() == 4:  # (1, H, W, 3) or (1, 3, H, W)
-                if logo_tensor.shape[1] == 3:  # (1, 3, H, W)
-                    # Remove batch dimension
-                    logo_tensor = logo_tensor.squeeze(0)
-                elif logo_tensor.shape[3] == 3:  # (1, H, W, 3)
-                    # Remove batch and permute to (3, H, W)
-                    logo_tensor = logo_tensor.squeeze(0).permute(2, 0, 1)
-                else:
-                    logger.error(f"Unexpected 4D logo tensor shape: {logo_tensor.shape}")
-                    return logo_tensor
-            elif logo_tensor.dim() == 3:  # (3, H, W) or (H, W, 3)
-                if logo_tensor.shape[0] == 3:  # Already (3, H, W)
-                    pass
-                elif logo_tensor.shape[2] == 3:  # (H, W, 3)
-                    # Permute to (3, H, W)
-                    logo_tensor = logo_tensor.permute(2, 0, 1)
-                else:
-                    logger.error(f"Unexpected 3D logo tensor shape: {logo_tensor.shape}")
-                    return logo_tensor
-            else:
-                logger.error(f"Logo tensor must be 3D or 4D tensor, got {logo_tensor.dim()}D")
-                return logo_tensor
-            
-            logger.info(f"[_normalize_logo_shape] normalized shape: {logo_tensor.shape}")
-            return logo_tensor
-            
-        except Exception as e:
-            logger.error(f"Failed to normalize logo shape: {str(e)}")
-            return logo_tensor
-
-
+    # Remove _load_logo_from_global_state and _normalize_logo_shape as they are no longer needed
 
     def _detect_logo_orientation(self, logo_tensor):
         """Auto-detect if logo is vertical or horizontal."""
@@ -395,7 +327,7 @@ class APZmediaLogoOverlay:
             return 0, 0
 
     def _blend_logo(self, background_image, logo_tensor, logo_mask, x, y, blend_mode, has_alpha):
-        """Blend logo into background image using mask from global state."""
+        """Blend logo into background image using mask from brand_assets."""
         try:
             logo_height, logo_width = logo_tensor.shape[1], logo_tensor.shape[2]
             
