@@ -1,0 +1,27 @@
+[
+  {
+    "name": "Primary Blue",
+    "hex": "#0066CC",
+    "id": "primary-blue"
+  },
+  {
+    "name": "Secondary Gray",
+    "hex": "#666666",
+    "id": "secondary-gray"
+  },
+  {
+    "name": "Accent Orange",
+    "hex": "#FF6600",
+    "id": "accent-orange"
+  },
+  {
+    "name": "Background White",
+    "hex": "#FFFFFF",
+    "id": "background-white"
+  },
+  {
+    "name": "Text Black",
+    "hex": "#000000",
+    "id": "text-black"
+  }
+] 

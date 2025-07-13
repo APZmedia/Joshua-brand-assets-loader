@@ -28,20 +28,25 @@ class APZmediaBrandAssetLoader:
                 "load_method": ("STRING", {"choices": ["manual", "api"], "default": "manual"}),
             },
             "optional": {
-                # API loading options
-                "brand_id": ("STRING", {"default": "", "multiline": False}),
+                # API Configuration
+                "api_brand_id": ("STRING", {"default": "", "multiline": False}),
                 "api_base_url": ("STRING", {"default": "https://api.example.com", "multiline": False}),
                 "api_token": ("STRING", {"default": "", "multiline": False}),
-                # Manual loading options
-                "logo_vertical_color_path": ("STRING", {"default": "", "multiline": False}),
-                "logo_vertical_mono_path": ("STRING", {"default": "", "multiline": False}),
-                "logo_horizontal_color_path": ("STRING", {"default": "", "multiline": False}),
-                "logo_horizontal_mono_path": ("STRING", {"default": "", "multiline": False}),
-                "logo_icon_path": ("STRING", {"default": "", "multiline": False}),
-                "primary_font_path": ("STRING", {"default": "", "multiline": False}),
-                "secondary_font_path": ("STRING", {"default": "", "multiline": False}),
-                "tertiary_font_path": ("STRING", {"default": "", "multiline": False}),
-                "color_palette_json": ("STRING", {"default": "", "multiline": True}),
+                
+                # Logo Assets
+                "logo_vertical_color": ("STRING", {"default": "", "multiline": False}),
+                "logo_vertical_mono": ("STRING", {"default": "", "multiline": False}),
+                "logo_horizontal_color": ("STRING", {"default": "", "multiline": False}),
+                "logo_horizontal_mono": ("STRING", {"default": "", "multiline": False}),
+                "logo_icon": ("STRING", {"default": "", "multiline": False}),
+                
+                # Font Assets
+                "font_primary": ("STRING", {"default": "", "multiline": False}),
+                "font_secondary": ("STRING", {"default": "", "multiline": False}),
+                "font_tertiary": ("STRING", {"default": "", "multiline": False}),
+                
+                # Color Palette
+                "color_palette": ("STRING", {"default": "", "multiline": True}),
             }
         }
 
@@ -54,18 +59,18 @@ class APZmediaBrandAssetLoader:
     )
     RETURN_NAMES = (
         "logo_vertical_color", "logo_vertical_mono", "logo_horizontal_color", "logo_horizontal_mono", "logo_icon",
-        "primary_font_path", "secondary_font_path", "tertiary_font_path",
-        "color_palette_json", "brand_name", "status_message"
+        "font_primary", "font_secondary", "font_tertiary",
+        "color_palette", "brand_name", "status_message"
     )
 
     FUNCTION = "load_brand_assets"
     CATEGORY = "apzmedia_brand"
 
-    def load_brand_assets(self, load_method, brand_id="", api_base_url="", api_token="", 
-                         logo_vertical_color_path="", logo_vertical_mono_path="", 
-                         logo_horizontal_color_path="", logo_horizontal_mono_path="", 
-                         logo_icon_path="", primary_font_path="", secondary_font_path="", 
-                         tertiary_font_path="", color_palette_json=""):
+    def load_brand_assets(self, load_method, api_brand_id="", api_base_url="", api_token="", 
+                         logo_vertical_color="", logo_vertical_mono="", 
+                         logo_horizontal_color="", logo_horizontal_mono="", 
+                         logo_icon="", font_primary="", font_secondary="", 
+                         font_tertiary="", color_palette=""):
         """
         Load all brand assets either manually or via API.
         
@@ -83,13 +88,13 @@ class APZmediaBrandAssetLoader:
         """
         try:
             if load_method == "api":
-                return self._load_from_api(brand_id, api_base_url, api_token)
+                return self._load_from_api(api_brand_id, api_base_url, api_token)
             else:
                 return self._load_manual(
-                    logo_vertical_color_path, logo_vertical_mono_path,
-                    logo_horizontal_color_path, logo_horizontal_mono_path,
-                    logo_icon_path, primary_font_path, secondary_font_path,
-                    tertiary_font_path, color_palette_json
+                    logo_vertical_color, logo_vertical_mono,
+                    logo_horizontal_color, logo_horizontal_mono,
+                    logo_icon, font_primary, font_secondary,
+                    font_tertiary, color_palette
                 )
         except Exception as e:
             logger.error("Failed to load brand assets")
@@ -186,48 +191,48 @@ class APZmediaBrandAssetLoader:
         except Exception:
             return self._return_defaults("API Loading Error: Unexpected error occurred")
 
-    def _load_manual(self, logo_vertical_color_path, logo_vertical_mono_path, 
-                    logo_horizontal_color_path, logo_horizontal_mono_path, 
-                    logo_icon_path, primary_font_path, secondary_font_path, 
-                    tertiary_font_path, color_palette_json) -> Tuple:
+    def _load_manual(self, logo_vertical_color, logo_vertical_mono, 
+                    logo_horizontal_color, logo_horizontal_mono, 
+                    logo_icon, font_primary, font_secondary, 
+                    font_tertiary, color_palette) -> Tuple:
         """Load brand assets from manual file paths."""
         try:
             # Load logos from file paths with path validation
-            logo_vertical_color = self._load_logo_from_path(logo_vertical_color_path)
-            logo_vertical_mono = self._load_logo_from_path(logo_vertical_mono_path)
-            logo_horizontal_color = self._load_logo_from_path(logo_horizontal_color_path)
-            logo_horizontal_mono = self._load_logo_from_path(logo_horizontal_mono_path)
-            logo_icon = self._load_logo_from_path(logo_icon_path)
+            logo_vertical_color_img = self._load_logo_from_path(logo_vertical_color)
+            logo_vertical_mono_img = self._load_logo_from_path(logo_vertical_mono)
+            logo_horizontal_color_img = self._load_logo_from_path(logo_horizontal_color)
+            logo_horizontal_mono_img = self._load_logo_from_path(logo_horizontal_mono)
+            logo_icon_img = self._load_logo_from_path(logo_icon)
 
             # Validate font paths
-            primary_font_path = primary_font_path if self._is_valid_font_file(primary_font_path) else ""
-            secondary_font_path = secondary_font_path if self._is_valid_font_file(secondary_font_path) else ""
-            tertiary_font_path = tertiary_font_path if self._is_valid_font_file(tertiary_font_path) else ""
+            primary_font_path = font_primary if self._is_valid_font_file(font_primary) else ""
+            secondary_font_path = font_secondary if self._is_valid_font_file(font_secondary) else ""
+            tertiary_font_path = font_tertiary if self._is_valid_font_file(font_tertiary) else ""
 
             # Validate color palette JSON
-            if color_palette_json:
+            if color_palette:
                 try:
-                    parsed = json.loads(color_palette_json)
+                    parsed = json.loads(color_palette)
                     # Validate color palette structure
                     if isinstance(parsed, list):
                         for color in parsed:
                             if not isinstance(color, dict) or 'hex' not in color:
-                                color_palette_json = "[]"
+                                color_palette = "[]"
                                 break
                     else:
-                        color_palette_json = "[]"
+                        color_palette = "[]"
                 except json.JSONDecodeError:
-                    color_palette_json = "[]"
+                    color_palette = "[]"
             else:
-                color_palette_json = "[]"
+                color_palette = "[]"
 
             brand_name = "Manual Brand Assets"
             status_message = "Successfully loaded manual brand assets"
             
             return (
-                logo_vertical_color, logo_vertical_mono, logo_horizontal_color, 
-                logo_horizontal_mono, logo_icon, primary_font_path, secondary_font_path, 
-                tertiary_font_path, color_palette_json, brand_name, status_message
+                logo_vertical_color_img, logo_vertical_mono_img, logo_horizontal_color_img, 
+                logo_horizontal_mono_img, logo_icon_img, primary_font_path, secondary_font_path, 
+                tertiary_font_path, color_palette, brand_name, status_message
             )
 
         except Exception:

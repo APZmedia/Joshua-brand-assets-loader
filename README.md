@@ -37,18 +37,47 @@ pip install -r requirements.txt
 ### Manual Mode
 1. Add "APZmedia - Brand Asset Loader" node to your workflow
 2. Set `load_method` to "manual"
-3. Provide file paths for your brand assets:
-   - Logo files (PNG, JPG, etc.)
-   - Font files (TTF, OTF, etc.)
-   - Color palette JSON
+3. Configure your brand assets in the organized sections:
+
+#### Logo Assets
+- `logo_vertical_color`: Vertical logo in color (PNG, JPG, etc.)
+- `logo_vertical_mono`: Vertical logo in monochrome
+- `logo_horizontal_color`: Horizontal logo in color
+- `logo_horizontal_mono`: Horizontal logo in monochrome
+- `logo_icon`: Square icon/favicon
+
+#### Font Assets
+- `font_primary`: Primary brand font (TTF, OTF, etc.)
+- `font_secondary`: Secondary brand font
+- `font_tertiary`: Tertiary brand font
+
+#### Color Palette
+- `color_palette`: JSON string with brand colors (see example below)
 
 ### API Mode
 1. Add "APZmedia - Brand Asset Loader" node to your workflow
 2. Set `load_method` to "api"
 3. Configure API settings:
-   - `brand_id`: Your brand identifier
+   - `api_brand_id`: Your brand identifier
    - `api_base_url`: Your API endpoint
    - `api_token`: Authentication token (optional for public APIs)
+
+### Color Palette Example
+Copy this example and modify for your brand:
+```json
+[
+  {
+    "name": "Primary Blue",
+    "hex": "#0066CC",
+    "id": "primary-blue"
+  },
+  {
+    "name": "Secondary Gray", 
+    "hex": "#666666",
+    "id": "secondary-gray"
+  }
+]
+```
 
 ## Node Outputs
 
