@@ -4,6 +4,7 @@ import logging
 import os
 from PIL import Image
 import numpy as np
+from .global_brand_state import global_brand_state
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -15,13 +16,11 @@ class APZmediaLogoOverlay:
         return {
             "required": {
                 "background_image": ("IMAGE", {}),
-                "logo_file_path": ("STRING", {"default": "", "multiline": False}),
-                "logo_type": ("STRING", {"choices": ["vertical", "horizontal", "auto"]}),
-                "position": ("STRING", {"choices": [
-                    "top-left", "top-center", "top-right",
-                    "center-left", "center", "center-right",
-                    "bottom-left", "bottom-center", "bottom-right"
-                ]}),
+                "logo_selection": (["vertical_color", "vertical_mono", "horizontal_color", "horizontal_mono", "icon"], {"default": "vertical_color"}),
+                "logo_type": (["vertical", "horizontal", "auto"], {"default": "auto"}),
+                "position": (["top-left", "top-center", "top-right",
+                             "center-left", "center", "center-right",
+                             "bottom-left", "bottom-center", "bottom-right"], {"default": "bottom-right"}),
                 "scale_percentage": ("FLOAT", {"default": 15.0, "min": 1.0, "max": 100.0, "step": 0.5}),
                 "padding_percentage": ("FLOAT", {"default": 5.0, "min": 0.0, "max": 50.0, "step": 0.5}),
                 "rotation_degrees": ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 1.0}),
@@ -30,7 +29,7 @@ class APZmediaLogoOverlay:
             },
             "optional": {
                 "opacity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "blend_mode": ("STRING", {"choices": ["normal", "multiply", "screen", "overlay"], "default": "normal"}),
+                "blend_mode": (["normal", "multiply", "screen", "overlay"], {"default": "normal"}),
             }
         }
 
@@ -41,14 +40,14 @@ class APZmediaLogoOverlay:
 
     CATEGORY = "apzmedia_brand"
 
-    def overlay_logo(self, background_image, logo_file_path, logo_type, position, scale_percentage, 
+    def overlay_logo(self, background_image, logo_selection, logo_type, position, scale_percentage, 
                     padding_percentage, rotation_degrees, offset_x, offset_y, opacity=1.0, blend_mode="normal"):
         """
         Overlay logo on background image with comprehensive positioning and scaling.
         
         Args:
             background_image: Background image tensor (C, H, W) format with RGB channels
-            logo_file_path: Path to logo file
+            logo_selection: Selected logo from global brand assets
             logo_type: Logo orientation (vertical, horizontal, auto)
             position: Logo position on background
             scale_percentage: Logo size as percentage of background
@@ -64,14 +63,14 @@ class APZmediaLogoOverlay:
         """
         try:
             # Input validation
-            if not self._validate_inputs(background_image, logo_file_path):
+            if not self._validate_inputs(background_image, logo_selection):
                 logger.error("Invalid inputs")
                 return self._create_error_overlay(background_image)
             
-            # Load and process logo
-            logo_tensor, has_alpha = self._load_logo(logo_file_path)
+            # Load and process logo from global state
+            logo_tensor, logo_mask, has_alpha = self._load_logo_from_global_state(logo_selection)
             if logo_tensor is None:
-                logger.error(f"Failed to load logo from: {logo_file_path}")
+                logger.error(f"Failed to load logo from global state: {logo_selection}")
                 return self._create_error_overlay(background_image)
             
             # Determine logo orientation
@@ -94,7 +93,7 @@ class APZmediaLogoOverlay:
             scaled_logo = scaled_logo * opacity
             
             # Blend logo into background
-            result = self._blend_logo(background_image, scaled_logo, x, y, blend_mode, has_alpha)
+            result = self._blend_logo(background_image, scaled_logo, logo_mask, x, y, blend_mode, has_alpha)
             
             return (result,)
             
@@ -102,7 +101,7 @@ class APZmediaLogoOverlay:
             logger.error(f"Failed to overlay logo: {str(e)}")
             return self._create_error_overlay(background_image)
 
-    def _validate_inputs(self, background_image, logo_file_path):
+    def _validate_inputs(self, background_image, logo_selection):
         """Validate input parameters."""
         try:
             # Check background image
@@ -114,13 +113,14 @@ class APZmediaLogoOverlay:
                 logger.error("Background image must be 3D tensor with 3 channels (RGB)")
                 return False
             
-            # Check logo file path
-            if not logo_file_path or not logo_file_path.strip():
-                logger.error("Logo file path is empty")
+            # Check if brand assets are loaded
+            if not global_brand_state.is_assets_loaded():
+                logger.error("No brand assets loaded in global state")
                 return False
             
-            if not os.path.exists(logo_file_path):
-                logger.error(f"Logo file not found: {logo_file_path}")
+            # Check logo selection
+            if not logo_selection or logo_selection not in ["vertical_color", "vertical_mono", "horizontal_color", "horizontal_mono", "icon"]:
+                logger.error(f"Invalid logo selection: {logo_selection}")
                 return False
             
             return True
@@ -129,38 +129,26 @@ class APZmediaLogoOverlay:
             logger.error(f"Input validation failed: {str(e)}")
             return False
 
-    def _load_logo(self, logo_file_path):
-        """Load logo from file path and detect alpha channel."""
+    def _load_logo_from_global_state(self, logo_selection):
+        """Load logo from global state and detect alpha channel."""
         try:
-            # Check file format
-            if not self._is_valid_image_file(logo_file_path):
-                logger.error(f"Invalid image file format: {logo_file_path}")
-                return None, False
+            # Get logo and mask from global state
+            logo_tensor, logo_mask = global_brand_state.get_logo(logo_selection, include_mask=True)
             
-            # Load image
-            image = Image.open(logo_file_path)
+            if logo_tensor is None:
+                logger.error(f"Logo not found in global state: {logo_selection}")
+                return None, None, False
             
-            # Check if image has alpha channel
-            has_alpha = image.mode == "RGBA"
+            # Check if mask has meaningful alpha (not all white)
+            has_alpha = torch.any(logo_mask < 1.0)
             
-            # Convert to RGBA if not already
-            if not has_alpha:
-                image = image.convert("RGBA")
-            
-            # Convert to tensor - ensure RGB order (C, H, W)
-            np_image = np.array(image).astype(np.float32) / 255.0
-            tensor = torch.from_numpy(np_image).permute(2, 0, 1)  # (C, H, W)
-            
-            return tensor, has_alpha
+            return logo_tensor, logo_mask, has_alpha
             
         except Exception as e:
-            logger.error(f"Failed to load logo: {str(e)}")
-            return None, False
+            logger.error(f"Failed to load logo from global state: {str(e)}")
+            return None, None, False
 
-    def _is_valid_image_file(self, file_path):
-        """Validate if file is a supported image format."""
-        supported_extensions = [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"]
-        return any(file_path.lower().endswith(ext) for ext in supported_extensions)
+
 
     def _detect_logo_orientation(self, logo_tensor):
         """Auto-detect if logo is vertical or horizontal."""
@@ -296,56 +284,46 @@ class APZmediaLogoOverlay:
             logger.error(f"Failed to calculate position: {str(e)}")
             return 0, 0
 
-    def _blend_logo(self, background_image, logo_tensor, x, y, blend_mode, has_alpha):
-        """Blend logo into background image."""
+    def _blend_logo(self, background_image, logo_tensor, logo_mask, x, y, blend_mode, has_alpha):
+        """Blend logo into background image using mask from global state."""
         try:
             logo_height, logo_width = logo_tensor.shape[1], logo_tensor.shape[2]
             
             # Extract background region - maintain (C, H, W) format
             bg_region = background_image[:, y:y+logo_height, x:x+logo_width]
             
-            # Handle alpha channel
-            if has_alpha and logo_tensor.shape[0] == 4:
-                # Separate RGB and alpha - maintain (C, H, W) format
-                logo_rgb = logo_tensor[:3, :, :]  # RGB channels
-                logo_alpha = logo_tensor[3:4, :, :].repeat(3, 1, 1)  # Alpha channel repeated for RGB
-                
-                # Apply blend mode to RGB
-                if blend_mode == "normal":
-                    blended_rgb = logo_rgb
-                elif blend_mode == "multiply":
-                    blended_rgb = bg_region * logo_rgb
-                elif blend_mode == "screen":
-                    blended_rgb = 1 - (1 - bg_region) * (1 - logo_rgb)
-                elif blend_mode == "overlay":
-                    blended_rgb = torch.where(bg_region < 0.5, 
-                                            2 * bg_region * logo_rgb, 
-                                            1 - 2 * (1 - bg_region) * (1 - logo_rgb))
-                else:
-                    blended_rgb = logo_rgb
-                
-                # Apply alpha blending - maintain (C, H, W) format
-                result = background_image.clone()
-                result[:, y:y+logo_height, x:x+logo_width] = (
-                    blended_rgb * logo_alpha + bg_region * (1 - logo_alpha)
-                )
+            # Scale logo mask to match logo size if needed
+            if logo_mask.shape[1:] != (logo_height, logo_width):
+                logo_mask = F.interpolate(
+                    logo_mask.unsqueeze(0),
+                    size=(logo_height, logo_width),
+                    mode="bilinear",
+                    align_corners=False
+                ).squeeze(0)
+            
+            # Ensure mask is 3-channel for RGB blending
+            if logo_mask.shape[0] == 1:
+                logo_mask = logo_mask.repeat(3, 1, 1)  # (3, H, W)
+            
+            # Apply blend mode to RGB
+            if blend_mode == "normal":
+                blended_rgb = logo_tensor
+            elif blend_mode == "multiply":
+                blended_rgb = bg_region * logo_tensor
+            elif blend_mode == "screen":
+                blended_rgb = 1 - (1 - bg_region) * (1 - logo_tensor)
+            elif blend_mode == "overlay":
+                blended_rgb = torch.where(bg_region < 0.5, 
+                                        2 * bg_region * logo_tensor, 
+                                        1 - 2 * (1 - bg_region) * (1 - logo_tensor))
             else:
-                # No alpha channel, apply blend mode directly
-                if blend_mode == "normal":
-                    blended = logo_tensor[:3, :, :]  # Ensure RGB only
-                elif blend_mode == "multiply":
-                    blended = bg_region * logo_tensor[:3, :, :]
-                elif blend_mode == "screen":
-                    blended = 1 - (1 - bg_region) * (1 - logo_tensor[:3, :, :])
-                elif blend_mode == "overlay":
-                    blended = torch.where(bg_region < 0.5, 
-                                        2 * bg_region * logo_tensor[:3, :, :], 
-                                        1 - 2 * (1 - bg_region) * (1 - logo_tensor[:3, :, :]))
-                else:
-                    blended = logo_tensor[:3, :, :]
-                
-                result = background_image.clone()
-                result[:, y:y+logo_height, x:x+logo_width] = blended
+                blended_rgb = logo_tensor
+            
+            # Apply alpha blending - maintain (C, H, W) format
+            result = background_image.clone()
+            result[:, y:y+logo_height, x:x+logo_width] = (
+                blended_rgb * logo_mask + bg_region * (1 - logo_mask)
+            )
             
             return result
             

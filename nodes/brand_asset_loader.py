@@ -9,6 +9,7 @@ import numpy as np
 import logging
 from typing import Dict, List, Tuple, Optional, Union
 from pathlib import Path
+from .global_brand_state import global_brand_state
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -25,7 +26,7 @@ class APZmediaBrandAssetLoader:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "load_method": ("STRING", {"choices": ["manual", "api"], "default": "manual"}),
+                "load_method": (["manual", "api"], {"default": "manual"}),
             },
             "optional": {
                 # API Configuration
@@ -232,6 +233,33 @@ class APZmediaBrandAssetLoader:
 
             status_message = f"Successfully loaded {brand_name} assets from API"
             
+            # Store assets in global state
+            assets_dict = {
+                "logo_vertical_color": logo_vertical_color,
+                "logo_vertical_color_mask": logo_vertical_color_mask,
+                "logo_vertical_mono": logo_vertical_mono,
+                "logo_vertical_mono_mask": logo_vertical_mono_mask,
+                "logo_horizontal_color": logo_horizontal_color,
+                "logo_horizontal_color_mask": logo_horizontal_color_mask,
+                "logo_horizontal_mono": logo_horizontal_mono,
+                "logo_horizontal_mono_mask": logo_horizontal_mono_mask,
+                "logo_icon": logo_icon,
+                "logo_icon_mask": logo_icon_mask,
+                "font_primary": primary_font_path,
+                "font_primary_bold": primary_bold_font_path,
+                "font_primary_italic": primary_italic_font_path,
+                "font_secondary": secondary_font_path,
+                "font_secondary_bold": secondary_bold_font_path,
+                "font_secondary_italic": secondary_italic_font_path,
+                "font_tertiary": tertiary_font_path,
+                "font_tertiary_bold": tertiary_bold_font_path,
+                "font_tertiary_italic": tertiary_italic_font_path,
+                "color_palette": color_palette_json,
+                "brand_name": brand_name,
+                "status_message": status_message
+            }
+            global_brand_state.set_brand_assets(assets_dict)
+            
             return (
                 logo_vertical_color, logo_vertical_color_mask, logo_vertical_mono, logo_vertical_mono_mask,
                 logo_horizontal_color, logo_horizontal_color_mask, logo_horizontal_mono, logo_horizontal_mono_mask,
@@ -292,6 +320,33 @@ class APZmediaBrandAssetLoader:
 
             brand_name = "Manual Brand Assets"
             status_message = "Successfully loaded manual brand assets"
+            
+            # Store assets in global state
+            assets_dict = {
+                "logo_vertical_color": logo_vertical_color_img,
+                "logo_vertical_color_mask": logo_vertical_color_mask,
+                "logo_vertical_mono": logo_vertical_mono_img,
+                "logo_vertical_mono_mask": logo_vertical_mono_mask,
+                "logo_horizontal_color": logo_horizontal_color_img,
+                "logo_horizontal_color_mask": logo_horizontal_color_mask,
+                "logo_horizontal_mono": logo_horizontal_mono_img,
+                "logo_horizontal_mono_mask": logo_horizontal_mono_mask,
+                "logo_icon": logo_icon_img,
+                "logo_icon_mask": logo_icon_mask,
+                "font_primary": primary_font_path,
+                "font_primary_bold": primary_bold_font_path,
+                "font_primary_italic": primary_italic_font_path,
+                "font_secondary": secondary_font_path,
+                "font_secondary_bold": secondary_bold_font_path,
+                "font_secondary_italic": secondary_italic_font_path,
+                "font_tertiary": tertiary_font_path,
+                "font_tertiary_bold": tertiary_bold_font_path,
+                "font_tertiary_italic": tertiary_italic_font_path,
+                "color_palette": color_palette,
+                "brand_name": brand_name,
+                "status_message": status_message
+            }
+            global_brand_state.set_brand_assets(assets_dict)
             
             return (
                 logo_vertical_color_img, logo_vertical_color_mask, logo_vertical_mono_img, logo_vertical_mono_mask,
@@ -515,18 +570,27 @@ class APZmediaBrandAssetLoader:
     def _process_logo_image(self, image: Image.Image) -> Tuple[torch.Tensor, torch.Tensor]:
         """Process logo image to extract RGB and alpha mask."""
         try:
-            # Convert to RGBA to ensure we have alpha channel
-            if image.mode != "RGBA":
-                image = image.convert("RGBA")
+            # Check if image has alpha channel
+            has_alpha = image.mode == "RGBA"
             
-            # Convert to numpy array
-            np_image = np.array(image).astype(np.float32) / 255.0
-            
-            # Extract RGB channels (first 3 channels)
-            rgb_tensor = torch.from_numpy(np_image[:, :, :3]).permute(2, 0, 1)  # (C, H, W)
-            
-            # Extract alpha channel (4th channel) as mask
-            alpha_tensor = torch.from_numpy(np_image[:, :, 3]).unsqueeze(0)  # (1, H, W)
+            if has_alpha:
+                # Image has alpha channel - extract it
+                np_image = np.array(image).astype(np.float32) / 255.0
+                
+                # Extract RGB channels (first 3 channels)
+                rgb_tensor = torch.from_numpy(np_image[:, :, :3]).permute(2, 0, 1)  # (C, H, W)
+                
+                # Extract alpha channel (4th channel) as mask
+                alpha_tensor = torch.from_numpy(np_image[:, :, 3]).unsqueeze(0)  # (1, H, W)
+            else:
+                # No alpha channel - convert to RGB and create full opacity mask
+                rgb_image = image.convert("RGB")
+                np_image = np.array(rgb_image).astype(np.float32) / 255.0
+                rgb_tensor = torch.from_numpy(np_image).permute(2, 0, 1)  # (C, H, W)
+                
+                # Create full opacity mask (all white)
+                height, width = rgb_image.size[1], rgb_image.size[0]
+                alpha_tensor = torch.ones((1, height, width))
             
             return rgb_tensor, alpha_tensor
             
