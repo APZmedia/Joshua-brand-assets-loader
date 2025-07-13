@@ -1,15 +1,15 @@
-from .nodes.brand_asset_loader import APZmediaBrandAssetLoader
-from .nodes.logo_placement_node import APZmediaLogoPlacement
-from .nodes.logo_overlay_node import APZmediaLogoOverlay
+# Import node modules
+from .nodes import brand_asset_loader
+from .nodes import logo_placement_node
+from .nodes import logo_overlay_node
 
-NODE_CLASS_MAPPINGS = {
-    "APZmediaBrandAssetLoader": APZmediaBrandAssetLoader,
-    "APZmediaLogoPlacement": APZmediaLogoPlacement,
-    "APZmediaLogoOverlay": APZmediaLogoOverlay,
-}
+# Combine all node mappings
+NODE_CLASS_MAPPINGS = {}
+NODE_CLASS_MAPPINGS.update(brand_asset_loader.NODE_CLASS_MAPPINGS)
+NODE_CLASS_MAPPINGS.update(logo_placement_node.NODE_CLASS_MAPPINGS)
+NODE_CLASS_MAPPINGS.update(logo_overlay_node.NODE_CLASS_MAPPINGS)
 
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "APZmediaBrandAssetLoader": "APZmedia - Brand Asset Loader",
-    "APZmediaLogoPlacement": "APZmedia - Logo Placement",
-    "APZmediaLogoOverlay": "APZmedia - Logo Overlay",
-}
+NODE_DISPLAY_NAME_MAPPINGS = {}
+NODE_DISPLAY_NAME_MAPPINGS.update(brand_asset_loader.NODE_DISPLAY_NAME_MAPPINGS)
+NODE_DISPLAY_NAME_MAPPINGS.update(logo_placement_node.NODE_DISPLAY_NAME_MAPPINGS)
+NODE_DISPLAY_NAME_MAPPINGS.update(logo_overlay_node.NODE_DISPLAY_NAME_MAPPINGS)
