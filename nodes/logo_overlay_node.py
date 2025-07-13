@@ -15,6 +15,7 @@ class APZmediaLogoOverlay:
     def INPUT_TYPES(cls):
         return {
             "required": {
+                "brand_assets_token": ("STRING", {"default": ""}),
                 "background_image": ("IMAGE", {}),
                 "logo_selection": (["vertical_color", "vertical_mono", "horizontal_color", "horizontal_mono", "icon"], {"default": "vertical_color"}),
                 "logo_type": (["vertical", "horizontal", "auto"], {"default": "auto"}),
@@ -26,7 +27,6 @@ class APZmediaLogoOverlay:
                 "rotation_degrees": ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 1.0}),
                 "offset_x": ("INT", {"default": 0, "min": -1000, "max": 1000}),
                 "offset_y": ("INT", {"default": 0, "min": -1000, "max": 1000}),
-                "brand_assets_token": ("STRING", {"default": ""}),
             },
             "optional": {
                 "opacity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
@@ -42,7 +42,7 @@ class APZmediaLogoOverlay:
 
     CATEGORY = "apzmedia_brand"
 
-    def overlay_logo(self, background_image, logo_selection, logo_type, position, scale_percentage, 
+    def overlay_logo(self, brand_assets_token, background_image, logo_selection, logo_type, position, scale_percentage, 
                     padding_percentage, rotation_degrees, offset_x, offset_y, opacity=1.0, blend_mode="normal"):
         """
         Overlay logo on background image with comprehensive positioning and scaling.
