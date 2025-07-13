@@ -66,35 +66,48 @@ class APZmediaLogoOverlay:
             if not self._validate_inputs(background_image, logo_selection):
                 logger.error("Invalid inputs")
                 return self._create_error_overlay(background_image)
-            
+
+            logger.info(f"[overlay_logo] background_image: shape={background_image.shape}, dtype={background_image.dtype}, min={background_image.min().item()}, max={background_image.max().item()}, mean={background_image.mean().item()}")
+
             # Load and process logo from global state
             logo_tensor, logo_mask, has_alpha = self._load_logo_from_global_state(logo_selection)
             if logo_tensor is None:
                 logger.error(f"Failed to load logo from global state: {logo_selection}")
                 return self._create_error_overlay(background_image)
-            
+
+            logger.info(f"[overlay_logo] logo_tensor: shape={logo_tensor.shape}, dtype={logo_tensor.dtype}, min={logo_tensor.min().item()}, max={logo_tensor.max().item()}, mean={logo_tensor.mean().item()}")
+            if logo_mask is not None:
+                logger.info(f"[overlay_logo] logo_mask: shape={logo_mask.shape}, dtype={logo_mask.dtype}, min={logo_mask.min().item()}, max={logo_mask.max().item()}, mean={logo_mask.mean().item()}")
+            else:
+                logger.info("[overlay_logo] logo_mask: None")
+
             # Determine logo orientation
             if logo_type == "auto":
                 logo_type = self._detect_logo_orientation(logo_tensor)
-            
+
             # Scale logo based on orientation and percentage
             scaled_logo = self._scale_logo_by_percentage(logo_tensor, background_image, logo_type, scale_percentage)
-            
+            logger.info(f"[overlay_logo] scaled_logo: shape={scaled_logo.shape}, dtype={scaled_logo.dtype}, min={scaled_logo.min().item()}, max={scaled_logo.max().item()}, mean={scaled_logo.mean().item()}")
+
             # Apply rotation
             if rotation_degrees != 0:
                 scaled_logo = self._rotate_logo(scaled_logo, rotation_degrees)
-            
+                logger.info(f"[overlay_logo] rotated_logo: shape={scaled_logo.shape}, dtype={scaled_logo.dtype}, min={scaled_logo.min().item()}, max={scaled_logo.max().item()}, mean={scaled_logo.mean().item()}")
+
             # Calculate position with padding and offset
             x, y = self._calculate_position_with_padding(
                 background_image, scaled_logo, position, padding_percentage, offset_x, offset_y
             )
-            
+            logger.info(f"[overlay_logo] logo position: x={x}, y={y}")
+
             # Apply opacity
             scaled_logo = scaled_logo * opacity
-            
+            logger.info(f"[overlay_logo] after opacity: min={scaled_logo.min().item()}, max={scaled_logo.max().item()}, mean={scaled_logo.mean().item()}")
+
             # Blend logo into background
             result = self._blend_logo(background_image, scaled_logo, logo_mask, x, y, blend_mode, has_alpha)
-            
+            logger.info(f"[overlay_logo] result: shape={result.shape}, dtype={result.dtype}, min={result.min().item()}, max={result.max().item()}, mean={result.mean().item()}")
+
             return (result,)
             
         except Exception as e:
@@ -191,7 +204,7 @@ class APZmediaLogoOverlay:
                 mode="bilinear",
                 align_corners=False
             ).squeeze(0)
-            
+            logger.info(f"[_scale_logo_by_percentage] scaled_logo: shape={scaled_logo.shape}, dtype={scaled_logo.dtype}, min={scaled_logo.min().item()}, max={scaled_logo.max().item()}, mean={scaled_logo.mean().item()}")
             return scaled_logo
             
         except Exception as e:
@@ -291,6 +304,12 @@ class APZmediaLogoOverlay:
             
             # Extract background region - maintain (C, H, W) format
             bg_region = background_image[:, y:y+logo_height, x:x+logo_width]
+            logger.info(f"[_blend_logo] bg_region: shape={bg_region.shape}, dtype={bg_region.dtype}, min={bg_region.min().item()}, max={bg_region.max().item()}, mean={bg_region.mean().item()}")
+            logger.info(f"[_blend_logo] logo_tensor: shape={logo_tensor.shape}, dtype={logo_tensor.dtype}, min={logo_tensor.min().item()}, max={logo_tensor.max().item()}, mean={logo_tensor.mean().item()}")
+            if logo_mask is not None:
+                logger.info(f"[_blend_logo] logo_mask: shape={logo_mask.shape}, dtype={logo_mask.dtype}, min={logo_mask.min().item()}, max={logo_mask.max().item()}, mean={logo_mask.mean().item()}")
+            else:
+                logger.info("[_blend_logo] logo_mask: None")
             
             # Scale logo mask to match logo size if needed
             if logo_mask.shape[1:] != (logo_height, logo_width):
@@ -324,7 +343,7 @@ class APZmediaLogoOverlay:
             result[:, y:y+logo_height, x:x+logo_width] = (
                 blended_rgb * logo_mask + bg_region * (1 - logo_mask)
             )
-            
+            logger.info(f"[_blend_logo] result: shape={result.shape}, dtype={result.dtype}, min={result.min().item()}, max={result.max().item()}, mean={result.mean().item()}")
             return result
             
         except Exception as e:
