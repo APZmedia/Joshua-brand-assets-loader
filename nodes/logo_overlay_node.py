@@ -15,7 +15,7 @@ class APZmediaLogoOverlay:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "brand_assets_token": ("STRING", {"default": ""}),
+                "brand_assets": ("BRAND_ASSETS", {}),
                 "background_image": ("IMAGE", {}),
                 "logo_selection": (["vertical_color", "vertical_mono", "horizontal_color", "horizontal_mono", "icon"], {"default": "vertical_color"}),
                 "logo_type": (["vertical", "horizontal", "auto"], {"default": "auto"}),
@@ -41,7 +41,7 @@ class APZmediaLogoOverlay:
 
     CATEGORY = "apzmedia_brand"
 
-    def overlay_logo(self, brand_assets_token, background_image, logo_selection, logo_type, position, scale_percentage, 
+    def overlay_logo(self, brand_assets, background_image, logo_selection, logo_type, position, scale_percentage, 
                     padding_percentage, rotation_degrees, offset_x, offset_y, opacity=1.0, blend_mode="normal"):
         """
         Overlay logo on background image with comprehensive positioning and scaling.
@@ -73,10 +73,12 @@ class APZmediaLogoOverlay:
 
             logger.info(f"[overlay_logo] background_image: shape={background_image.shape}, dtype={background_image.dtype}, min={background_image.min().item()}, max={background_image.max().item()}, mean={background_image.mean().item()}")
 
-            # Load and process logo from global state
-            logo_tensor, logo_mask, has_alpha = self._load_logo_from_global_state(logo_selection)
+            # Extract logo and mask from brand_assets dict
+            logo_tensor = brand_assets.get(f"logo_{logo_selection}")
+            logo_mask = brand_assets.get(f"logo_{logo_selection}_mask")
+
             if logo_tensor is None:
-                logger.error(f"Failed to load logo from global state: {logo_selection}")
+                logger.error(f"Failed to load logo from brand_assets: {logo_selection}")
                 return self._create_error_overlay(background_image)
 
             logger.info(f"[overlay_logo] logo_tensor: shape={logo_tensor.shape}, dtype={logo_tensor.dtype}, min={logo_tensor.min().item()}, max={logo_tensor.max().item()}, mean={logo_tensor.mean().item()}")
@@ -109,7 +111,7 @@ class APZmediaLogoOverlay:
             logger.info(f"[overlay_logo] after opacity: min={scaled_logo.min().item()}, max={scaled_logo.max().item()}, mean={scaled_logo.mean().item()}")
 
             # Blend logo into background
-            result = self._blend_logo(background_image, scaled_logo, logo_mask, x, y, blend_mode, has_alpha)
+            result = self._blend_logo(background_image, scaled_logo, logo_mask, x, y, blend_mode, logo_mask is not None)
             logger.info(f"[overlay_logo] result: shape={result.shape}, dtype={result.dtype}, min={result.min().item()}, max={result.max().item()}, mean={result.mean().item()}")
 
             # Convert result from (3, H, W) to (1, H, W, 3) for ComfyUI
@@ -178,8 +180,9 @@ class APZmediaLogoOverlay:
                 return False
             
             # Check if brand assets are loaded
-            if not global_brand_state.is_assets_loaded():
-                logger.error("No brand assets loaded in global state")
+            # The brand_assets input is now a dictionary, so we check if it's not empty
+            if not brand_assets or not isinstance(brand_assets, dict):
+                logger.error("Brand assets dictionary is empty or not provided")
                 return False
             
             # Check logo selection

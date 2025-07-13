@@ -74,23 +74,8 @@ class APZmediaBrandAssetLoader:
             }
         }
 
-    RETURN_TYPES = (
-        "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK",  # logos with masks
-        "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING",  # font paths
-        "STRING",  # color palette JSON
-        "STRING",  # brand name
-        "STRING",  # status message
-        "STRING",  # brand_assets_token (new)
-    )
-    RETURN_NAMES = (
-        "logo_vertical_color", "logo_vertical_color_mask", "logo_vertical_mono", "logo_vertical_mono_mask", 
-        "logo_horizontal_color", "logo_horizontal_color_mask", "logo_horizontal_mono", "logo_horizontal_mono_mask", 
-        "logo_icon", "logo_icon_mask",
-        "font_primary", "font_primary_bold", "font_primary_italic", "font_secondary", "font_secondary_bold", "font_secondary_italic", 
-        "font_tertiary", "font_tertiary_bold", "font_tertiary_italic",
-        "color_palette", "brand_name", "status_message",
-        "brand_assets_token",  # new
-    )
+    RETURN_TYPES = ("BRAND_ASSETS",)
+    RETURN_NAMES = ("brand_assets",)
 
     FUNCTION = "load_brand_assets"
     CATEGORY = "apzmedia_brand"
@@ -279,14 +264,7 @@ class APZmediaBrandAssetLoader:
             }
             global_brand_state.set_brand_assets(assets_dict)
             
-            return (
-                logo_vertical_color, logo_vertical_color_mask, logo_vertical_mono, logo_vertical_mono_mask,
-                logo_horizontal_color, logo_horizontal_color_mask, logo_horizontal_mono, logo_horizontal_mono_mask,
-                logo_icon, logo_icon_mask, primary_font_path, primary_bold_font_path, primary_italic_font_path,
-                secondary_font_path, secondary_bold_font_path, secondary_italic_font_path,
-                tertiary_font_path, tertiary_bold_font_path, tertiary_italic_font_path,
-                color_palette_json, brand_name, status_message, 'OK'
-            )
+            return (assets_dict,)
 
         except requests.RequestException as e:
             logger.error(f"Network Error during API loading: {e}")
@@ -370,23 +348,7 @@ class APZmediaBrandAssetLoader:
             }
             global_brand_state.set_brand_assets(assets_dict)
             
-            outputs = (
-                logo_vertical_color_img, logo_vertical_color_mask,
-                logo_vertical_mono_img, logo_vertical_mono_mask,
-                logo_horizontal_color_img, logo_horizontal_color_mask,
-                logo_horizontal_mono_img, logo_horizontal_mono_mask,
-                logo_icon_img, logo_icon_mask,
-                primary_font_path, primary_bold_font_path, primary_italic_font_path,
-                secondary_font_path, secondary_bold_font_path, secondary_italic_font_path,
-                tertiary_font_path, tertiary_bold_font_path, tertiary_italic_font_path,
-                color_palette, brand_name, status_message, 'OK'
-            )
-            for idx, val in enumerate(outputs):
-                if isinstance(val, torch.Tensor):
-                    print(f"[BrandAssetLoader] Output {idx}: type={type(val)}, shape={tuple(val.shape)}, dtype={val.dtype}")
-                else:
-                    print(f"[BrandAssetLoader] Output {idx}: type={type(val)}, value={val if len(str(val)) < 100 else str(val)[:100] + '...'}")
-            return outputs
+            return (assets_dict,)
         except Exception:
             return self._return_defaults("Manual Loading Error: Failed to load assets")
 
