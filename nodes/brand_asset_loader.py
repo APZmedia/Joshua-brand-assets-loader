@@ -75,11 +75,12 @@ class APZmediaBrandAssetLoader:
         }
 
     RETURN_TYPES = (
-        "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK",  # logos with masks: vertical_color, vertical_color_mask, vertical_mono, vertical_mono_mask, horizontal_color, horizontal_color_mask, horizontal_mono, horizontal_mono_mask, icon, icon_mask
-        "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING",  # font paths: primary, primary_bold, primary_italic, secondary, secondary_bold, secondary_italic, tertiary, tertiary_bold, tertiary_italic
+        "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK",  # logos with masks
+        "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING",  # font paths
         "STRING",  # color palette JSON
         "STRING",  # brand name
         "STRING",  # status message
+        "STRING",  # brand_assets_token (new)
     )
     RETURN_NAMES = (
         "logo_vertical_color", "logo_vertical_color_mask", "logo_vertical_mono", "logo_vertical_mono_mask", 
@@ -87,7 +88,8 @@ class APZmediaBrandAssetLoader:
         "logo_icon", "logo_icon_mask",
         "font_primary", "font_primary_bold", "font_primary_italic", "font_secondary", "font_secondary_bold", "font_secondary_italic", 
         "font_tertiary", "font_tertiary_bold", "font_tertiary_italic",
-        "color_palette", "brand_name", "status_message"
+        "color_palette", "brand_name", "status_message",
+        "brand_assets_token",  # new
     )
 
     FUNCTION = "load_brand_assets"
@@ -283,7 +285,7 @@ class APZmediaBrandAssetLoader:
                 logo_icon, logo_icon_mask, primary_font_path, primary_bold_font_path, primary_italic_font_path,
                 secondary_font_path, secondary_bold_font_path, secondary_italic_font_path,
                 tertiary_font_path, tertiary_bold_font_path, tertiary_italic_font_path,
-                color_palette_json, brand_name, status_message
+                color_palette_json, brand_name, status_message, 'OK'
             )
 
         except requests.RequestException as e:
@@ -377,7 +379,7 @@ class APZmediaBrandAssetLoader:
                 primary_font_path, primary_bold_font_path, primary_italic_font_path,
                 secondary_font_path, secondary_bold_font_path, secondary_italic_font_path,
                 tertiary_font_path, tertiary_bold_font_path, tertiary_italic_font_path,
-                color_palette, brand_name, status_message
+                color_palette, brand_name, status_message, 'OK'
             )
             for idx, val in enumerate(outputs):
                 if isinstance(val, torch.Tensor):
@@ -673,7 +675,7 @@ class APZmediaBrandAssetLoader:
             "", "", "", "", "", "", "", "", "",
             self._get_default_color_palette(),
             "Unknown Brand",
-            status_message
+            status_message, 'OK'
         )
 
 NODE_CLASS_MAPPINGS = {

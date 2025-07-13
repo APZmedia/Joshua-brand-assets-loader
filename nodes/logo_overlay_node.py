@@ -26,6 +26,7 @@ class APZmediaLogoOverlay:
                 "rotation_degrees": ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 1.0}),
                 "offset_x": ("INT", {"default": 0, "min": -1000, "max": 1000}),
                 "offset_y": ("INT", {"default": 0, "min": -1000, "max": 1000}),
+                "brand_assets_token": ("STRING", {"default": ""}),
             },
             "optional": {
                 "opacity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
