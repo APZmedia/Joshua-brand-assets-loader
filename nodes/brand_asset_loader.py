@@ -625,13 +625,6 @@ class APZmediaBrandAssetLoader:
         supported_extensions = [".ttf", ".otf", ".woff", ".woff2"]
         return any(file_path.lower().endswith(ext) for ext in supported_extensions)
 
-    def _to_hw3(self, tensor):
-        # tensor: (3, H, W) -> (H, W, 3)
-        arr = tensor.detach().cpu().numpy()
-        arr = np.transpose(arr, (1, 2, 0))  # (H, W, 3)
-        return arr
-
-
     def _return_defaults(self, status_message: str = "No assets loaded") -> Tuple:
         """Return default values when asset loading fails."""
         empty_logo = self._create_empty_logo()
