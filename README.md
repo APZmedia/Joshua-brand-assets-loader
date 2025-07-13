@@ -4,11 +4,11 @@ A ComfyUI extension that provides nodes for loading brand assets and dynamically
 
 ## 🚀 Features
 
-- **Brand Asset Loading**: Load and manage brand assets (logos, colors, fonts) from various sources
+- **Brand Asset Loading**: Load and manage brand assets (logos, colors, fonts) from file paths
 - **Dynamic Logo Placement**: Automatically place logos in AI-generated images with positioning controls
 - **Multiple Format Support**: PNG, JPG, JPEG, WebP, BMP, TIFF for images; TTF, OTF, WOFF, WOFF2 for fonts
 - **Advanced Blending**: Multiple blend modes (normal, multiply, screen, overlay) with opacity control
-- **Configurable Paths**: Custom asset paths with environment variable support
+- **File Path Input**: Direct file path input for maximum flexibility
 - **Robust Error Handling**: Comprehensive error handling with graceful fallbacks
 - **ComfyUI Integration**: Seamless integration with existing ComfyUI workflows
 
@@ -35,68 +35,46 @@ git clone https://github.com/apzmedia/ComfyUI-APZmedia-brand-assets.git
 cp -r ComfyUI-APZmedia-brand-assets /path/to/ComfyUI/custom_nodes/
 ```
 
-## 🗂️ Asset Organization
+## 🗂️ Asset File Formats
 
-Create the following directory structure for your brand assets:
+### Supported Image Formats (Logos)
+- **PNG** (recommended for transparency)
+- **JPG/JPEG**
+- **WebP**
+- **BMP**
+- **TIFF/TIF**
 
-```
-assets/brand_assets/
-├── logos/
-│   ├── company_logo.png
-│   ├── product_logo.jpg
-│   └── watermark.webp
-├── fonts/
-│   ├── brand_font.ttf
-│   ├── heading_font.otf
-│   └── body_font.woff
-└── colors/
-    ├── primary_color.txt
-    ├── secondary_color.txt
-    └── accent_color.txt
-```
+### Supported Font Formats
+- **TTF** (TrueType)
+- **OTF** (OpenType)
+- **WOFF** (Web Open Font Format)
+- **WOFF2** (Web Open Font Format 2.0)
 
-### Asset File Formats
-
-**Images (Logos)**:
-- PNG (recommended for transparency)
-- JPG/JPEG
-- WebP
-- BMP
-- TIFF
-
-**Fonts**:
-- TTF
-- OTF
-- WOFF
-- WOFF2
-
-**Colors**:
-- Text files containing hex color codes (e.g., `#FF0000`)
+### Supported Color Formats
+- **TXT** files containing hex color codes (e.g., `#FF0000`)
+- **COLOR** files containing hex color codes
+- **HEX** files containing hex color codes
 
 ## 🎯 Usage
 
 ### 1. Brand Asset Loader Node
 
-**Purpose**: Load brand assets for use in workflows
+**Purpose**: Load brand assets from file paths for use in workflows
 
 **Inputs**:
 - `asset_type`: Type of asset (logo, font, color)
-- `asset_key`: Name/key of the asset file (without extension)
-- `output_format`: Output format preference (local_path, url)
-- `custom_asset_path`: Optional custom path override
+- `file_path`: Full path to the asset file
 
 **Outputs**:
 - `logo_image`: Loaded logo as image tensor
 - `logo_mask`: Logo mask/alpha channel
-- `font_path_or_url`: Font file path or URL
+- `font_path_or_url`: Font file path
 - `color_hex`: Color hex code
 
 **Example**:
 ```
 Asset Type: logo
-Asset Key: company_logo
-Output Format: local_path
-Custom Asset Path: (leave empty for default)
+File Path: C:\BrandAssets\company_logo.png
 ```
 
 ### 2. Logo Placement Node
@@ -129,26 +107,13 @@ Blend Mode: normal
 Opacity: 0.9
 ```
 
-## 🔧 Configuration
-
-### Environment Variables
-
-Set the `APZMEDIA_ASSET_PATH` environment variable to customize the asset base path:
-
-```bash
-export APZMEDIA_ASSET_PATH="/path/to/your/brand/assets"
-```
-
-### Custom Asset Paths
-
-You can specify custom asset paths per node using the `custom_asset_path` parameter in the Brand Asset Loader node.
-
 ## 📋 Sample Workflow
 
 1. **Load Brand Assets**:
    - Add "APZmedia - Brand Asset Loader" node
-   - Configure asset type and key
-   - Connect to logo placement node
+   - Set asset type to "logo"
+   - Enter the full file path to your logo (e.g., `C:\BrandAssets\logo.png`)
+   - Connect outputs to logo placement node
 
 2. **Generate Background Image**:
    - Use any image generation node (Stable Diffusion, etc.)
@@ -167,10 +132,16 @@ You can specify custom asset paths per node using the `custom_asset_path` parame
 
 ### Common Issues
 
-**"Logo file not found" Error**:
-- Check that the asset file exists in the correct directory
-- Verify the asset key matches the filename (without extension)
-- Ensure the file format is supported
+**"File not found" Error**:
+- Check that the file path is correct and complete
+- Ensure the file exists at the specified location
+- Use absolute paths for best compatibility
+- Verify file permissions
+
+**"Invalid image file format" Error**:
+- Ensure the file has a supported extension (.png, .jpg, etc.)
+- Check that the file is not corrupted
+- Try opening the file in an image editor to verify it's valid
 
 **"Invalid input images" Error**:
 - Make sure background image has 3 channels (RGB)
@@ -195,7 +166,7 @@ python -c "import logging; logging.basicConfig(level=logging.DEBUG)"
 
 ### v0.1.0
 - Initial release
-- Brand asset loading functionality
+- Brand asset loading from file paths
 - Logo placement with positioning controls
 - Multiple format support
 - Comprehensive error handling

@@ -14,6 +14,7 @@ setup(
         'comfyui.nodes': [
             'brand_asset_loader = nodes.brand_asset_loader:APZmediaBrandAssetLoader',
             'logo_placement_node = nodes.logo_placement_node:APZmediaLogoPlacement',
+            'logo_overlay_node = nodes.logo_overlay_node:APZmediaLogoOverlay',
         ],
     },
     author="Pablo Apiolazza",
