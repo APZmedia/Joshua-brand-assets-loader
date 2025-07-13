@@ -9,11 +9,28 @@ import numpy as np
 import logging
 from typing import Dict, List, Tuple, Optional, Union
 from pathlib import Path
-from .global_brand_state import global_brand_state
+# Assuming global_brand_state is available in the same relative path
+# from .global_brand_state import global_brand_state 
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Placeholder for global_brand_state if not externally defined, for demonstration
+# In a real ComfyUI custom node setup, you would typically define global_brand_state
+# in its own file and import it correctly.
+class GlobalBrandState:
+    def __init__(self):
+        self._brand_assets = {}
+
+    def set_brand_assets(self, assets: Dict):
+        self._brand_assets = assets
+        logger.info("Brand assets stored in global state.")
+
+    def get_brand_assets(self) -> Dict:
+        return self._brand_assets
+
+global_brand_state = GlobalBrandState()
 
 class APZmediaBrandAssetLoader:
     # Security constants
@@ -109,7 +126,7 @@ class APZmediaBrandAssetLoader:
                     font_tertiary, font_tertiary_bold, font_tertiary_italic, color_palette
                 )
         except Exception as e:
-            logger.error("Failed to load brand assets")
+            logger.error(f"Failed to load brand assets: {e}")
             return self._return_defaults("Error: Asset loading failed")
 
     def _load_from_api(self, brand_id: str, api_base_url: str, api_token: str) -> Tuple:
@@ -269,11 +286,14 @@ class APZmediaBrandAssetLoader:
                 color_palette_json, brand_name, status_message
             )
 
-        except requests.RequestException:
+        except requests.RequestException as e:
+            logger.error(f"Network Error during API loading: {e}")
             return self._return_defaults("Network Error: Unable to connect to API")
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.error(f"API Error: Invalid response format: {e}")
             return self._return_defaults("API Error: Invalid response format")
-        except Exception:
+        except Exception as e:
+            logger.error(f"API Loading Error: Unexpected error occurred: {e}")
             return self._return_defaults("API Loading Error: Unexpected error occurred")
 
     def _load_manual(self, logo_vertical_color, logo_vertical_mono, 
@@ -349,18 +369,19 @@ class APZmediaBrandAssetLoader:
             global_brand_state.set_brand_assets(assets_dict)
             
             return (
-                [logo_vertical_color_img], logo_vertical_color_mask,
-                [logo_vertical_mono_img], logo_vertical_mono_mask,
-                [logo_horizontal_color_img], logo_horizontal_color_mask,
-                [logo_horizontal_mono_img], logo_horizontal_mono_mask,
-                [logo_icon_img], logo_icon_mask,
+                logo_vertical_color_img, logo_vertical_color_mask,
+                logo_vertical_mono_img, logo_vertical_mono_mask,
+                logo_horizontal_color_img, logo_horizontal_color_mask,
+                logo_horizontal_mono_img, logo_horizontal_mono_mask,
+                logo_icon_img, logo_icon_mask,
                 primary_font_path, primary_bold_font_path, primary_italic_font_path,
                 secondary_font_path, secondary_bold_font_path, secondary_italic_font_path,
                 tertiary_font_path, tertiary_bold_font_path, tertiary_italic_font_path,
                 color_palette, brand_name, status_message
             )
 
-        except Exception:
+        except Exception as e:
+            logger.error(f"Manual Loading Error: Failed to load assets: {e}")
             return self._return_defaults("Manual Loading Error: Failed to load assets")
 
     def _load_logo_from_url(self, url: str) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -370,25 +391,25 @@ class APZmediaBrandAssetLoader:
         
         # Validate URL
         if not self._is_valid_url(url):
-            logger.warning("Invalid logo URL format")
+            logger.warning(f"Invalid logo URL format: {url}")
             return self._create_empty_logo(), self._create_empty_mask()
         
         try:
             response = requests.get(url, timeout=30, stream=True)
             if response.status_code != 200:
-                logger.warning(f"Failed to download logo: HTTP {response.status_code}")
+                logger.warning(f"Failed to download logo from {url}: HTTP {response.status_code}")
                 return self._create_empty_logo(), self._create_empty_mask()
             
             # Check content type
             content_type = response.headers.get('content-type', '').lower()
             if not any(img_type in content_type for img_type in ['image/', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp']):
-                logger.warning(f"Invalid content type for logo: {content_type}")
+                logger.warning(f"Invalid content type for logo from {url}: {content_type}")
                 return self._create_empty_logo(), self._create_empty_mask()
             
             # Check file size
             content_length = response.headers.get('content-length')
             if content_length and int(content_length) > self.MAX_FILE_SIZE:
-                logger.warning(f"Logo file too large: {content_length} bytes")
+                logger.warning(f"Logo file from {url} too large: {content_length} bytes")
                 return self._create_empty_logo(), self._create_empty_mask()
             
             # Read content with size limit
@@ -396,7 +417,7 @@ class APZmediaBrandAssetLoader:
             for chunk in response.iter_content(chunk_size=8192):
                 content += chunk
                 if len(content) > self.MAX_FILE_SIZE:
-                    logger.warning("Logo file exceeds size limit")
+                    logger.warning(f"Logo file from {url} exceeds size limit during download")
                     return self._create_empty_logo(), self._create_empty_mask()
             
             # Create temporary file-like object
@@ -406,59 +427,59 @@ class APZmediaBrandAssetLoader:
             
             # Validate image dimensions
             if image.width > self.MAX_IMAGE_DIMENSION or image.height > self.MAX_IMAGE_DIMENSION:
-                logger.warning(f"Logo image too large: {image.width}x{image.height}")
+                logger.warning(f"Logo image from {url} too large: {image.width}x{image.height}")
                 return self._create_empty_logo(), self._create_empty_mask()
             
             return self._process_logo_image(image)
             
         except Exception as e:
-            logger.error("Failed to load logo from URL")
+            logger.error(f"Failed to load logo from URL {url}: {e}")
             return self._create_empty_logo(), self._create_empty_mask()
 
     def _load_logo_from_path(self, file_path: str) -> Tuple[torch.Tensor, torch.Tensor]:
         """Load logo from file path with path traversal protection. Returns (rgb_image, alpha_mask)."""
-        print(f"[BrandAssetLoader] Trying to load logo from: {file_path}")
+        logger.info(f"[BrandAssetLoader] Trying to load logo from: {file_path}")
         if not file_path:
-            print("[BrandAssetLoader] No file path provided.")
+            logger.info("[BrandAssetLoader] No file path provided.")
             return self._create_empty_logo(), self._create_empty_mask()
         
         # Validate and sanitize file path
         if not self._is_safe_file_path(file_path):
-            print(f"[BrandAssetLoader] Unsafe file path detected: {file_path}")
+            logger.warning(f"[BrandAssetLoader] Unsafe file path detected: {file_path}")
             return self._create_empty_logo(), self._create_empty_mask()
         
         try:
             if not os.path.exists(file_path):
-                print(f"[BrandAssetLoader] File does not exist: {file_path}")
+                logger.warning(f"[BrandAssetLoader] File does not exist: {file_path}")
                 return self._create_empty_logo(), self._create_empty_mask()
-            print(f"[BrandAssetLoader] File exists: {file_path}")
+            logger.info(f"[BrandAssetLoader] File exists: {file_path}")
             
             # Check file size
             file_size = os.path.getsize(file_path)
-            print(f"[BrandAssetLoader] File size: {file_size} bytes")
+            logger.info(f"[BrandAssetLoader] File size: {file_size} bytes")
             if file_size > self.MAX_FILE_SIZE:
-                print(f"[BrandAssetLoader] Logo file too large: {file_size} bytes")
+                logger.warning(f"[BrandAssetLoader] Logo file too large: {file_size} bytes")
                 return self._create_empty_logo(), self._create_empty_mask()
             
             if not self._is_valid_image_file(file_path):
-                print(f"[BrandAssetLoader] Invalid image file format: {file_path}")
+                logger.warning(f"[BrandAssetLoader] Invalid image file format: {file_path}")
                 return self._create_empty_logo(), self._create_empty_mask()
             
             image = Image.open(file_path)
-            print(f"[BrandAssetLoader] Loaded image: size={image.size}, mode={image.mode}")
+            logger.info(f"[BrandAssetLoader] Loaded image: size={image.size}, mode={image.mode}")
             
             # Validate image dimensions
             if image.width > self.MAX_IMAGE_DIMENSION or image.height > self.MAX_IMAGE_DIMENSION:
-                print(f"[BrandAssetLoader] Logo image too large: {image.width}x{image.height}")
+                logger.warning(f"[BrandAssetLoader] Logo image too large: {image.width}x{image.height}")
                 return self._create_empty_logo(), self._create_empty_mask()
             
             rgb_tensor, alpha_tensor = self._process_logo_image(image)
-            print(f"[BrandAssetLoader] RGB tensor shape: {rgb_tensor.shape}, min/max: {rgb_tensor.min().item()}/{rgb_tensor.max().item()}")
-            print(f"[BrandAssetLoader] Alpha tensor shape: {alpha_tensor.shape}, min/max: {alpha_tensor.min().item()}/{alpha_tensor.max().item()}")
+            logger.info(f"[BrandAssetLoader] RGB tensor shape: {rgb_tensor.shape}, min/max: {rgb_tensor.min().item()}/{rgb_tensor.max().item()}")
+            logger.info(f"[BrandAssetLoader] Alpha tensor shape: {alpha_tensor.shape}, min/max: {alpha_tensor.min().item()}/{alpha_tensor.max().item()}")
             return rgb_tensor, alpha_tensor
             
         except Exception as e:
-            print(f"[BrandAssetLoader] Exception loading logo: {e}")
+            logger.error(f"[BrandAssetLoader] Exception loading logo from {file_path}: {e}")
             return self._create_empty_logo(), self._create_empty_mask()
 
     def _validate_font_url(self, url: str) -> str:
@@ -467,10 +488,12 @@ class APZmediaBrandAssetLoader:
             return ""
         
         if not self._is_valid_url(url):
+            logger.warning(f"Invalid font URL format: {url}")
             return ""
         
-        # Check if it's a font file
+        # Check if it's a font file (simple extension check for now)
         if not any(ext in url.lower() for ext in ['.ttf', '.otf', '.woff', '.woff2']):
+            logger.warning(f"URL does not seem to be a font file: {url}")
             return ""
         
         return url
@@ -480,15 +503,17 @@ class APZmediaBrandAssetLoader:
         try:
             parsed = urllib.parse.urlparse(url)
             
-            # Check protocol
+            # Check scheme (protocol)
             if parsed.scheme not in self.ALLOWED_PROTOCOLS:
+                logger.debug(f"Invalid protocol for URL: {url} (scheme: {parsed.scheme})")
                 return False
             
-            # Check for domain restrictions
-            if self.ALLOWED_DOMAINS and parsed.netloc not in self.ALLOWED_DOMAINS:
+            # Check for domain restrictions if ALLOWED_DOMAINS is not empty
+            if self.ALLOWED_DOMAINS and parsed.netloc and parsed.netloc not in self.ALLOWED_DOMAINS:
+                logger.debug(f"Domain not allowed for URL: {url} (netloc: {parsed.netloc})")
                 return False
             
-            # Check for suspicious patterns
+            # Check for suspicious patterns in the whole URL string
             suspicious_patterns = [
                 'file://', 'ftp://', 'gopher://', 'data:', 'javascript:',
                 'vbscript:', 'onload=', 'onerror=', 'eval(', 'document.cookie'
@@ -497,10 +522,12 @@ class APZmediaBrandAssetLoader:
             url_lower = url.lower()
             for pattern in suspicious_patterns:
                 if pattern in url_lower:
+                    logger.debug(f"Suspicious pattern '{pattern}' found in URL: {url}")
                     return False
             
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error parsing or validating URL {url}: {e}")
             return False
 
     def _is_valid_brand_id(self, brand_id: str) -> bool:
@@ -509,40 +536,48 @@ class APZmediaBrandAssetLoader:
             return False
         
         # Only allow alphanumeric characters, hyphens, and underscores
-        return bool(re.match(r'^[a-zA-Z0-9_-]+$', brand_id))
+        if not bool(re.match(r'^[a-zA-Z0-9_-]+$', brand_id)):
+            logger.warning(f"Invalid brand ID format: {brand_id}")
+            return False
+        return True
 
     def _is_safe_file_path(self, file_path: str) -> bool:
         """Check if file path is safe from path traversal attacks."""
         if not file_path:
             return False
         
-        # Normalize path
+        # Normalize path to resolve '..' and '.'
         try:
             normalized_path = os.path.normpath(file_path)
             absolute_path = os.path.abspath(normalized_path)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error normalizing file path {file_path}: {e}")
             return False
         
-        # Check for path traversal attempts
+        # Check for path traversal attempts and absolute system paths
         dangerous_patterns = [
-            '..', '~', '/etc/', '/var/', '/tmp/', '/proc/', '/sys/',
+            '..\\', '../', '~', '/etc/', '/var/', '/tmp/', '/proc/', '/sys/',
             'C:\\Windows\\', 'C:\\System32\\', '\\Windows\\', '\\System32\\',
-            'Windows', 'System32'
+            'Windows', 'System32', 
+            'usr/local', 'home/', 'root/', 
         ]
+        
         path_lower = absolute_path.lower()
         for pattern in dangerous_patterns:
-            if pattern in path_lower:
+            if pattern.lower() in path_lower:
+                logger.warning(f"Dangerous pattern '{pattern}' found in file path: {absolute_path}")
                 return False
-        # Allow any drive letter, just block system folders
+        
         return True
 
     def _create_empty_logo(self) -> torch.Tensor:
-        """Create an empty logo tensor."""
-        return torch.zeros((3, 64, 64))
+        """Create an empty logo tensor in (1, H, W, 3) format."""
+        # Default to a small, black image for empty output
+        return torch.zeros((1, 64, 64, 3), dtype=torch.float32)
 
     def _create_empty_mask(self) -> torch.Tensor:
-        """Create an empty mask tensor."""
-        return torch.zeros((1, 64, 64))
+        """Create an empty mask tensor in (1, H, W) format (all zeros, i.e., fully transparent)."""
+        return torch.zeros((1, 64, 64), dtype=torch.float32)
 
     def _get_default_color_palette(self) -> str:
         """Get default color palette JSON string."""
@@ -576,38 +611,37 @@ class APZmediaBrandAssetLoader:
         return json.dumps(default_palette, indent=2)
 
     def _process_logo_image(self, image: Image.Image) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Process logo image to extract RGB and alpha mask."""
+        """Process logo image to extract RGB and alpha mask.
+           Returns:
+               rgb_image_tensor: torch.Tensor of shape (1, H, W, 3) (float32, 0-1)
+               alpha_mask_tensor: torch.Tensor of shape (1, H, W) (float32, 0-1)
+        """
         try:
-            # Check if image has alpha channel
-            has_alpha = image.mode == "RGBA"
+            # Ensure image is in RGBA mode for consistent handling of alpha
+            image = image.convert("RGBA")
             
-            if has_alpha:
-                # Image has alpha channel - extract it
-                np_image = np.array(image).astype(np.float32) / 255.0
-                
-                # Extract RGB channels (first 3 channels)
-                rgb_tensor = torch.from_numpy(np_image[:, :, :3]).permute(2, 0, 1)  # (C, H, W)
-                
-                # Extract alpha channel (4th channel) as mask
-                alpha_tensor = torch.from_numpy(np_image[:, :, 3]).unsqueeze(0)  # (1, H, W)
-            else:
-                # No alpha channel - convert to RGB and create full opacity mask
-                rgb_image = image.convert("RGB")
-                np_image = np.array(rgb_image).astype(np.float32) / 255.0
-                rgb_tensor = torch.from_numpy(np_image).permute(2, 0, 1)  # (C, H, W)
-                
-                # Create full opacity mask (all white)
-                height, width = rgb_image.size[1], rgb_image.size[0]
-                alpha_tensor = torch.ones((1, height, width))
+            # Convert to numpy array and normalize to 0-1 range
+            np_image = np.array(image).astype(np.float32) / 255.0
+            
+            # Extract RGB channels (first 3 channels) - shape will be (H, W, 3)
+            rgb_tensor = torch.from_numpy(np_image[:, :, :3]) 
+            
+            # Extract alpha channel (4th channel) as mask - shape will be (H, W)
+            alpha_tensor = torch.from_numpy(np_image[:, :, 3])
+            
+            # Add batch dimension to both tensors
+            rgb_tensor = rgb_tensor.unsqueeze(0)  # Convert (H, W, 3) to (1, H, W, 3)
+            alpha_tensor = alpha_tensor.unsqueeze(0) # Convert (H, W) to (1, H, W)
             
             return rgb_tensor, alpha_tensor
             
         except Exception as e:
-            logger.error("Failed to process logo image")
+            logger.error(f"Failed to process logo image: {e}")
+            # Ensure empty tensors also have the correct batch dimension and format
             return self._create_empty_logo(), self._create_empty_mask()
 
     def _is_valid_image_file(self, file_path: str) -> bool:
-        """Validate if file is a supported image format."""
+        """Validate if file is a supported image format by checking extension."""
         if not file_path:
             return False
         supported_extensions = [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"]
@@ -627,11 +661,11 @@ class APZmediaBrandAssetLoader:
 
     def _return_defaults(self, status_message: str = "No assets loaded") -> Tuple:
         """Return default values when asset loading fails."""
-        empty_logo = self._create_empty_logo()
-        empty_mask = self._create_empty_mask()
+        empty_logo = self._create_empty_logo() 
+        empty_mask = self._create_empty_mask() 
         return (
-            [empty_logo], empty_mask, [empty_logo], empty_mask, [empty_logo], empty_mask,
-            [empty_logo], empty_mask, [empty_logo], empty_mask,
+            empty_logo, empty_mask, empty_logo, empty_mask, empty_logo, empty_mask,
+            empty_logo, empty_mask, empty_logo, empty_mask,
             "", "", "", "", "", "", "", "", "",
             self._get_default_color_palette(),
             "Unknown Brand",
