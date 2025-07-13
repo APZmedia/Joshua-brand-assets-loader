@@ -349,9 +349,9 @@ class APZmediaBrandAssetLoader:
             global_brand_state.set_brand_assets(assets_dict)
             
             return (
-                logo_vertical_color_img, logo_vertical_color_mask, logo_vertical_mono_img, logo_vertical_mono_mask,
-                logo_horizontal_color_img, logo_horizontal_color_mask, logo_horizontal_mono_img, logo_horizontal_mono_mask,
-                logo_icon_img, logo_icon_mask, primary_font_path, primary_bold_font_path, primary_italic_font_path,
+                [logo_vertical_color_img], [logo_vertical_color_mask], [logo_vertical_mono_img], [logo_vertical_mono_mask],
+                [logo_horizontal_color_img], [logo_horizontal_color_mask], [logo_horizontal_mono_img], [logo_horizontal_mono_mask],
+                [logo_icon_img], [logo_icon_mask], primary_font_path, primary_bold_font_path, primary_italic_font_path,
                 secondary_font_path, secondary_bold_font_path, secondary_italic_font_path,
                 tertiary_font_path, tertiary_bold_font_path, tertiary_italic_font_path,
                 color_palette, brand_name, status_message
@@ -629,8 +629,8 @@ class APZmediaBrandAssetLoader:
         empty_logo = self._create_empty_logo()
         empty_mask = self._create_empty_mask()
         return (
-            empty_logo, empty_mask, empty_logo, empty_mask, empty_logo, empty_mask, 
-            empty_logo, empty_mask, empty_logo, empty_mask,  # logos with masks
+            [empty_logo], [empty_mask], [empty_logo], [empty_mask], [empty_logo], [empty_mask], 
+            [empty_logo], [empty_mask], [empty_logo], [empty_mask],  # logos with masks
             "", "", "", "", "", "", "", "", "",  # font paths (primary, primary_bold, primary_italic, secondary, secondary_bold, secondary_italic, tertiary, tertiary_bold, tertiary_italic)
             self._get_default_color_palette(),  # default color palette
             "Unknown Brand",  # brand name
