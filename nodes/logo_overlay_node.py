@@ -111,6 +111,12 @@ class APZmediaLogoOverlay:
             result = self._blend_logo(background_image, scaled_logo, logo_mask, x, y, blend_mode, has_alpha)
             logger.info(f"[overlay_logo] result: shape={result.shape}, dtype={result.dtype}, min={result.min().item()}, max={result.max().item()}, mean={result.mean().item()}")
 
+            # Convert result from (3, H, W) to (1, H, W, 3) for ComfyUI
+            if result.dim() == 3 and result.shape[0] == 3:
+                result = result.permute(1, 2, 0).unsqueeze(0)  # (3, H, W) -> (H, W, 3) -> (1, H, W, 3)
+                logger.info(f"[overlay_logo] final output shape: {result.shape}")
+            else:
+                logger.error(f"[overlay_logo] Unexpected result shape before return: {result.shape}")
             return (result,)
         except Exception as e:
             logger.error(f"Failed to overlay logo: {str(e)}")
@@ -446,6 +452,9 @@ class APZmediaLogoOverlay:
             # Blend with original image
             error_image = background_image * 0.7 + red_overlay * 0.3
             
+            # Convert error image to (1, H, W, 3) for ComfyUI
+            if error_image.dim() == 3 and error_image.shape[0] == 3:
+                error_image = error_image.permute(1, 2, 0).unsqueeze(0)
             return (error_image,)
             
         except Exception as e:
