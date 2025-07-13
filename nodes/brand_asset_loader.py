@@ -514,18 +514,14 @@ class APZmediaBrandAssetLoader:
         # Check for path traversal attempts
         dangerous_patterns = [
             '..', '~', '/etc/', '/var/', '/tmp/', '/proc/', '/sys/',
-            'C:\\Windows\\', 'C:\\System32\\', '\\Windows\\', '\\System32\\'
+            'C:\\Windows\\', 'C:\\System32\\', '\\Windows\\', '\\System32\\',
+            'Windows', 'System32'
         ]
-        
         path_lower = absolute_path.lower()
         for pattern in dangerous_patterns:
             if pattern in path_lower:
                 return False
-        
-        # Additional checks for Windows paths
-        if ':' in file_path and not file_path.startswith('C:'):
-            return False
-        
+        # Allow any drive letter, just block system folders
         return True
 
     def _create_empty_logo(self) -> torch.Tensor:
