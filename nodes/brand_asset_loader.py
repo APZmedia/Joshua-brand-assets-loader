@@ -42,8 +42,14 @@ class APZmediaBrandAssetLoader:
                 
                 # Font Assets
                 "font_primary": ("STRING", {"default": "", "multiline": False}),
+                "font_primary_bold": ("STRING", {"default": "", "multiline": False}),
+                "font_primary_italic": ("STRING", {"default": "", "multiline": False}),
                 "font_secondary": ("STRING", {"default": "", "multiline": False}),
+                "font_secondary_bold": ("STRING", {"default": "", "multiline": False}),
+                "font_secondary_italic": ("STRING", {"default": "", "multiline": False}),
                 "font_tertiary": ("STRING", {"default": "", "multiline": False}),
+                "font_tertiary_bold": ("STRING", {"default": "", "multiline": False}),
+                "font_tertiary_italic": ("STRING", {"default": "", "multiline": False}),
                 
                 # Color Palette
                 "color_palette": ("STRING", {"default": "", "multiline": True}),
@@ -51,15 +57,18 @@ class APZmediaBrandAssetLoader:
         }
 
     RETURN_TYPES = (
-        "IMAGE", "IMAGE", "IMAGE", "IMAGE", "IMAGE",  # logos: vertical_color, vertical_mono, horizontal_color, horizontal_mono, icon
-        "STRING", "STRING", "STRING",  # font paths: primary, secondary, tertiary
+        "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK",  # logos with masks: vertical_color, vertical_color_mask, vertical_mono, vertical_mono_mask, horizontal_color, horizontal_color_mask, horizontal_mono, horizontal_mono_mask, icon, icon_mask
+        "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING",  # font paths: primary, primary_bold, primary_italic, secondary, secondary_bold, secondary_italic, tertiary, tertiary_bold, tertiary_italic
         "STRING",  # color palette JSON
         "STRING",  # brand name
         "STRING",  # status message
     )
     RETURN_NAMES = (
-        "logo_vertical_color", "logo_vertical_mono", "logo_horizontal_color", "logo_horizontal_mono", "logo_icon",
-        "font_primary", "font_secondary", "font_tertiary",
+        "logo_vertical_color", "logo_vertical_color_mask", "logo_vertical_mono", "logo_vertical_mono_mask", 
+        "logo_horizontal_color", "logo_horizontal_color_mask", "logo_horizontal_mono", "logo_horizontal_mono_mask", 
+        "logo_icon", "logo_icon_mask",
+        "font_primary", "font_primary_bold", "font_primary_italic", "font_secondary", "font_secondary_bold", "font_secondary_italic", 
+        "font_tertiary", "font_tertiary_bold", "font_tertiary_italic",
         "color_palette", "brand_name", "status_message"
     )
 
@@ -69,8 +78,9 @@ class APZmediaBrandAssetLoader:
     def load_brand_assets(self, load_method, api_brand_id="", api_base_url="", api_token="", 
                          logo_vertical_color="", logo_vertical_mono="", 
                          logo_horizontal_color="", logo_horizontal_mono="", 
-                         logo_icon="", font_primary="", font_secondary="", 
-                         font_tertiary="", color_palette=""):
+                         logo_icon="", font_primary="", font_primary_bold="", font_primary_italic="",
+                         font_secondary="", font_secondary_bold="", font_secondary_italic="",
+                         font_tertiary="", font_tertiary_bold="", font_tertiary_italic="", color_palette=""):
         """
         Load all brand assets either manually or via API.
         
@@ -93,8 +103,9 @@ class APZmediaBrandAssetLoader:
                 return self._load_manual(
                     logo_vertical_color, logo_vertical_mono,
                     logo_horizontal_color, logo_horizontal_mono,
-                    logo_icon, font_primary, font_secondary,
-                    font_tertiary, color_palette
+                    logo_icon, font_primary, font_primary_bold, font_primary_italic,
+                    font_secondary, font_secondary_bold, font_secondary_italic,
+                    font_tertiary, font_tertiary_bold, font_tertiary_italic, color_palette
                 )
         except Exception as e:
             logger.error("Failed to load brand assets")
@@ -146,42 +157,88 @@ class APZmediaBrandAssetLoader:
             
             # Load logos with URL validation
             logos = brand_data.get("logos", {})
-            logo_vertical_color = self._load_logo_from_url(logos.get("verticalColor", {}).get("url", ""))
-            logo_vertical_mono = self._load_logo_from_url(logos.get("verticalMonocolor", {}).get("url", ""))
-            logo_horizontal_color = self._load_logo_from_url(logos.get("horizontalColor", {}).get("url", ""))
-            logo_horizontal_mono = self._load_logo_from_url(logos.get("horizontalMonocolor", {}).get("url", ""))
-            logo_icon = self._load_logo_from_url(logos.get("icon", {}).get("url", ""))
+            logo_vertical_color, logo_vertical_color_mask = self._load_logo_from_url(logos.get("verticalColor", {}).get("url", ""))
+            logo_vertical_mono, logo_vertical_mono_mask = self._load_logo_from_url(logos.get("verticalMonocolor", {}).get("url", ""))
+            logo_horizontal_color, logo_horizontal_color_mask = self._load_logo_from_url(logos.get("horizontalColor", {}).get("url", ""))
+            logo_horizontal_mono, logo_horizontal_mono_mask = self._load_logo_from_url(logos.get("horizontalMonocolor", {}).get("url", ""))
+            logo_icon, logo_icon_mask = self._load_logo_from_url(logos.get("icon", {}).get("url", ""))
 
             # Load fonts with URL validation
             fonts = brand_data.get("fonts", {})
+            
+            # Primary font variants
             primary_font_path = self._validate_font_url(fonts.get("primary", {}).get("variableFontFile", {}).get("url", ""))
             if not primary_font_path:
                 static_files = fonts.get("primary", {}).get("staticFontFiles", [])
                 if static_files:
                     primary_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
             
+            primary_bold_font_path = self._validate_font_url(fonts.get("primaryBold", {}).get("variableFontFile", {}).get("url", ""))
+            if not primary_bold_font_path:
+                static_files = fonts.get("primaryBold", {}).get("staticFontFiles", [])
+                if static_files:
+                    primary_bold_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+            
+            primary_italic_font_path = self._validate_font_url(fonts.get("primaryItalic", {}).get("variableFontFile", {}).get("url", ""))
+            if not primary_italic_font_path:
+                static_files = fonts.get("primaryItalic", {}).get("staticFontFiles", [])
+                if static_files:
+                    primary_italic_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+            
+            # Secondary font variants
             secondary_font_path = self._validate_font_url(fonts.get("secondary", {}).get("variableFontFile", {}).get("url", ""))
             if not secondary_font_path:
                 static_files = fonts.get("secondary", {}).get("staticFontFiles", [])
                 if static_files:
                     secondary_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
             
+            secondary_bold_font_path = self._validate_font_url(fonts.get("secondaryBold", {}).get("variableFontFile", {}).get("url", ""))
+            if not secondary_bold_font_path:
+                static_files = fonts.get("secondaryBold", {}).get("staticFontFiles", [])
+                if static_files:
+                    secondary_bold_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+            
+            secondary_italic_font_path = self._validate_font_url(fonts.get("secondaryItalic", {}).get("variableFontFile", {}).get("url", ""))
+            if not secondary_italic_font_path:
+                static_files = fonts.get("secondaryItalic", {}).get("staticFontFiles", [])
+                if static_files:
+                    secondary_italic_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+            
+            # Tertiary font variants
             tertiary_font_path = self._validate_font_url(fonts.get("tertiary", {}).get("variableFontFile", {}).get("url", ""))
             if not tertiary_font_path:
                 static_files = fonts.get("tertiary", {}).get("staticFontFiles", [])
                 if static_files:
                     tertiary_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+            
+            tertiary_bold_font_path = self._validate_font_url(fonts.get("tertiaryBold", {}).get("variableFontFile", {}).get("url", ""))
+            if not tertiary_bold_font_path:
+                static_files = fonts.get("tertiaryBold", {}).get("staticFontFiles", [])
+                if static_files:
+                    tertiary_bold_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+            
+            tertiary_italic_font_path = self._validate_font_url(fonts.get("tertiaryItalic", {}).get("variableFontFile", {}).get("url", ""))
+            if not tertiary_italic_font_path:
+                static_files = fonts.get("tertiaryItalic", {}).get("staticFontFiles", [])
+                if static_files:
+                    tertiary_italic_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
 
             # Load color palette
             color_palette = brand_data.get("colorPalette", [])
-            color_palette_json = json.dumps(color_palette, indent=2)
+            if not color_palette:
+                color_palette_json = self._get_default_color_palette()
+            else:
+                color_palette_json = json.dumps(color_palette, indent=2)
 
             status_message = f"Successfully loaded {brand_name} assets from API"
             
             return (
-                logo_vertical_color, logo_vertical_mono, logo_horizontal_color, 
-                logo_horizontal_mono, logo_icon, primary_font_path, secondary_font_path, 
-                tertiary_font_path, color_palette_json, brand_name, status_message
+                logo_vertical_color, logo_vertical_color_mask, logo_vertical_mono, logo_vertical_mono_mask,
+                logo_horizontal_color, logo_horizontal_color_mask, logo_horizontal_mono, logo_horizontal_mono_mask,
+                logo_icon, logo_icon_mask, primary_font_path, primary_bold_font_path, primary_italic_font_path,
+                secondary_font_path, secondary_bold_font_path, secondary_italic_font_path,
+                tertiary_font_path, tertiary_bold_font_path, tertiary_italic_font_path,
+                color_palette_json, brand_name, status_message
             )
 
         except requests.RequestException:
@@ -193,21 +250,28 @@ class APZmediaBrandAssetLoader:
 
     def _load_manual(self, logo_vertical_color, logo_vertical_mono, 
                     logo_horizontal_color, logo_horizontal_mono, 
-                    logo_icon, font_primary, font_secondary, 
-                    font_tertiary, color_palette) -> Tuple:
+                    logo_icon, font_primary, font_primary_bold, font_primary_italic,
+                    font_secondary, font_secondary_bold, font_secondary_italic,
+                    font_tertiary, font_tertiary_bold, font_tertiary_italic, color_palette) -> Tuple:
         """Load brand assets from manual file paths."""
         try:
             # Load logos from file paths with path validation
-            logo_vertical_color_img = self._load_logo_from_path(logo_vertical_color)
-            logo_vertical_mono_img = self._load_logo_from_path(logo_vertical_mono)
-            logo_horizontal_color_img = self._load_logo_from_path(logo_horizontal_color)
-            logo_horizontal_mono_img = self._load_logo_from_path(logo_horizontal_mono)
-            logo_icon_img = self._load_logo_from_path(logo_icon)
+            logo_vertical_color_img, logo_vertical_color_mask = self._load_logo_from_path(logo_vertical_color)
+            logo_vertical_mono_img, logo_vertical_mono_mask = self._load_logo_from_path(logo_vertical_mono)
+            logo_horizontal_color_img, logo_horizontal_color_mask = self._load_logo_from_path(logo_horizontal_color)
+            logo_horizontal_mono_img, logo_horizontal_mono_mask = self._load_logo_from_path(logo_horizontal_mono)
+            logo_icon_img, logo_icon_mask = self._load_logo_from_path(logo_icon)
 
             # Validate font paths
             primary_font_path = font_primary if self._is_valid_font_file(font_primary) else ""
+            primary_bold_font_path = font_primary_bold if self._is_valid_font_file(font_primary_bold) else ""
+            primary_italic_font_path = font_primary_italic if self._is_valid_font_file(font_primary_italic) else ""
             secondary_font_path = font_secondary if self._is_valid_font_file(font_secondary) else ""
+            secondary_bold_font_path = font_secondary_bold if self._is_valid_font_file(font_secondary_bold) else ""
+            secondary_italic_font_path = font_secondary_italic if self._is_valid_font_file(font_secondary_italic) else ""
             tertiary_font_path = font_tertiary if self._is_valid_font_file(font_tertiary) else ""
+            tertiary_bold_font_path = font_tertiary_bold if self._is_valid_font_file(font_tertiary_bold) else ""
+            tertiary_italic_font_path = font_tertiary_italic if self._is_valid_font_file(font_tertiary_italic) else ""
 
             # Validate color palette JSON
             if color_palette:
@@ -217,54 +281,57 @@ class APZmediaBrandAssetLoader:
                     if isinstance(parsed, list):
                         for color in parsed:
                             if not isinstance(color, dict) or 'hex' not in color:
-                                color_palette = "[]"
+                                color_palette = self._get_default_color_palette()
                                 break
                     else:
-                        color_palette = "[]"
+                        color_palette = self._get_default_color_palette()
                 except json.JSONDecodeError:
-                    color_palette = "[]"
+                    color_palette = self._get_default_color_palette()
             else:
-                color_palette = "[]"
+                color_palette = self._get_default_color_palette()
 
             brand_name = "Manual Brand Assets"
             status_message = "Successfully loaded manual brand assets"
             
             return (
-                logo_vertical_color_img, logo_vertical_mono_img, logo_horizontal_color_img, 
-                logo_horizontal_mono_img, logo_icon_img, primary_font_path, secondary_font_path, 
-                tertiary_font_path, color_palette, brand_name, status_message
+                logo_vertical_color_img, logo_vertical_color_mask, logo_vertical_mono_img, logo_vertical_mono_mask,
+                logo_horizontal_color_img, logo_horizontal_color_mask, logo_horizontal_mono_img, logo_horizontal_mono_mask,
+                logo_icon_img, logo_icon_mask, primary_font_path, primary_bold_font_path, primary_italic_font_path,
+                secondary_font_path, secondary_bold_font_path, secondary_italic_font_path,
+                tertiary_font_path, tertiary_bold_font_path, tertiary_italic_font_path,
+                color_palette, brand_name, status_message
             )
 
         except Exception:
             return self._return_defaults("Manual Loading Error: Failed to load assets")
 
-    def _load_logo_from_url(self, url: str) -> torch.Tensor:
-        """Load logo from URL with security validation."""
+    def _load_logo_from_url(self, url: str) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Load logo from URL with security validation. Returns (rgb_image, alpha_mask)."""
         if not url:
-            return self._create_empty_logo()
+            return self._create_empty_logo(), self._create_empty_mask()
         
         # Validate URL
         if not self._is_valid_url(url):
             logger.warning("Invalid logo URL format")
-            return self._create_empty_logo()
+            return self._create_empty_logo(), self._create_empty_mask()
         
         try:
             response = requests.get(url, timeout=30, stream=True)
             if response.status_code != 200:
                 logger.warning(f"Failed to download logo: HTTP {response.status_code}")
-                return self._create_empty_logo()
+                return self._create_empty_logo(), self._create_empty_mask()
             
             # Check content type
             content_type = response.headers.get('content-type', '').lower()
             if not any(img_type in content_type for img_type in ['image/', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp']):
                 logger.warning(f"Invalid content type for logo: {content_type}")
-                return self._create_empty_logo()
+                return self._create_empty_logo(), self._create_empty_mask()
             
             # Check file size
             content_length = response.headers.get('content-length')
             if content_length and int(content_length) > self.MAX_FILE_SIZE:
                 logger.warning(f"Logo file too large: {content_length} bytes")
-                return self._create_empty_logo()
+                return self._create_empty_logo(), self._create_empty_mask()
             
             # Read content with size limit
             content = b""
@@ -272,7 +339,7 @@ class APZmediaBrandAssetLoader:
                 content += chunk
                 if len(content) > self.MAX_FILE_SIZE:
                     logger.warning("Logo file exceeds size limit")
-                    return self._create_empty_logo()
+                    return self._create_empty_logo(), self._create_empty_mask()
             
             # Create temporary file-like object
             from io import BytesIO
@@ -282,52 +349,50 @@ class APZmediaBrandAssetLoader:
             # Validate image dimensions
             if image.width > self.MAX_IMAGE_DIMENSION or image.height > self.MAX_IMAGE_DIMENSION:
                 logger.warning(f"Logo image too large: {image.width}x{image.height}")
-                return self._create_empty_logo()
+                return self._create_empty_logo(), self._create_empty_mask()
             
-            image = image.convert("RGB")
-            return self.image_to_tensor(image)
+            return self._process_logo_image(image)
             
         except Exception as e:
             logger.error("Failed to load logo from URL")
-            return self._create_empty_logo()
+            return self._create_empty_logo(), self._create_empty_mask()
 
-    def _load_logo_from_path(self, file_path: str) -> torch.Tensor:
-        """Load logo from file path with path traversal protection."""
+    def _load_logo_from_path(self, file_path: str) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Load logo from file path with path traversal protection. Returns (rgb_image, alpha_mask)."""
         if not file_path:
-            return self._create_empty_logo()
+            return self._create_empty_logo(), self._create_empty_mask()
         
         # Validate and sanitize file path
         if not self._is_safe_file_path(file_path):
             logger.warning("Unsafe file path detected")
-            return self._create_empty_logo()
+            return self._create_empty_logo(), self._create_empty_mask()
         
         try:
             if not os.path.exists(file_path):
-                return self._create_empty_logo()
+                return self._create_empty_logo(), self._create_empty_mask()
             
             # Check file size
             file_size = os.path.getsize(file_path)
             if file_size > self.MAX_FILE_SIZE:
                 logger.warning(f"Logo file too large: {file_size} bytes")
-                return self._create_empty_logo()
+                return self._create_empty_logo(), self._create_empty_mask()
             
             if not self._is_valid_image_file(file_path):
                 logger.warning("Invalid image file format")
-                return self._create_empty_logo()
+                return self._create_empty_logo(), self._create_empty_mask()
             
             image = Image.open(file_path)
             
             # Validate image dimensions
             if image.width > self.MAX_IMAGE_DIMENSION or image.height > self.MAX_IMAGE_DIMENSION:
                 logger.warning(f"Logo image too large: {image.width}x{image.height}")
-                return self._create_empty_logo()
+                return self._create_empty_logo(), self._create_empty_mask()
             
-            image = image.convert("RGB")
-            return self.image_to_tensor(image)
+            return self._process_logo_image(image)
             
         except Exception as e:
             logger.error("Failed to load logo from path")
-            return self._create_empty_logo()
+            return self._create_empty_logo(), self._create_empty_mask()
 
     def _validate_font_url(self, url: str) -> str:
         """Validate font URL and return safe URL or empty string."""
@@ -412,6 +477,63 @@ class APZmediaBrandAssetLoader:
         """Create an empty logo tensor."""
         return torch.zeros((3, 64, 64))
 
+    def _create_empty_mask(self) -> torch.Tensor:
+        """Create an empty mask tensor."""
+        return torch.zeros((1, 64, 64))
+
+    def _get_default_color_palette(self) -> str:
+        """Get default color palette JSON string."""
+        default_palette = [
+            {
+                "name": "Primary Blue",
+                "hex": "#0066CC",
+                "id": "primary-blue"
+            },
+            {
+                "name": "Secondary Gray", 
+                "hex": "#666666",
+                "id": "secondary-gray"
+            },
+            {
+                "name": "Accent Orange",
+                "hex": "#FF6600", 
+                "id": "accent-orange"
+            },
+            {
+                "name": "Background White",
+                "hex": "#FFFFFF",
+                "id": "background-white"
+            },
+            {
+                "name": "Text Black",
+                "hex": "#000000",
+                "id": "text-black"
+            }
+        ]
+        return json.dumps(default_palette, indent=2)
+
+    def _process_logo_image(self, image: Image.Image) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Process logo image to extract RGB and alpha mask."""
+        try:
+            # Convert to RGBA to ensure we have alpha channel
+            if image.mode != "RGBA":
+                image = image.convert("RGBA")
+            
+            # Convert to numpy array
+            np_image = np.array(image).astype(np.float32) / 255.0
+            
+            # Extract RGB channels (first 3 channels)
+            rgb_tensor = torch.from_numpy(np_image[:, :, :3]).permute(2, 0, 1)  # (C, H, W)
+            
+            # Extract alpha channel (4th channel) as mask
+            alpha_tensor = torch.from_numpy(np_image[:, :, 3]).unsqueeze(0)  # (1, H, W)
+            
+            return rgb_tensor, alpha_tensor
+            
+        except Exception as e:
+            logger.error("Failed to process logo image")
+            return self._create_empty_logo(), self._create_empty_mask()
+
     def _is_valid_image_file(self, file_path: str) -> bool:
         """Validate if file is a supported image format."""
         if not file_path:
@@ -431,23 +553,17 @@ class APZmediaBrandAssetLoader:
         supported_extensions = [".ttf", ".otf", ".woff", ".woff2"]
         return any(file_path.lower().endswith(ext) for ext in supported_extensions)
 
-    def image_to_tensor(self, image: Image.Image) -> torch.Tensor:
-        """Convert PIL image to PyTorch tensor."""
-        try:
-            np_image = np.array(image).astype(np.float32) / 255.0
-            tensor = torch.from_numpy(np_image).permute(2, 0, 1)
-            return tensor
-        except Exception as e:
-            logger.error("Failed to convert image to tensor")
-            return self._create_empty_logo()
+
 
     def _return_defaults(self, status_message: str = "No assets loaded") -> Tuple:
         """Return default values when asset loading fails."""
         empty_logo = self._create_empty_logo()
+        empty_mask = self._create_empty_mask()
         return (
-            empty_logo, empty_logo, empty_logo, empty_logo, empty_logo,  # logos
-            "", "", "",  # font paths
-            "[]",  # empty color palette
+            empty_logo, empty_mask, empty_logo, empty_mask, empty_logo, empty_mask, 
+            empty_logo, empty_mask, empty_logo, empty_mask,  # logos with masks
+            "", "", "", "", "", "", "", "", "",  # font paths (primary, primary_bold, primary_italic, secondary, secondary_bold, secondary_italic, tertiary, tertiary_bold, tertiary_italic)
+            self._get_default_color_palette(),  # default color palette
             "Unknown Brand",  # brand name
             status_message  # status message
         )
