@@ -77,6 +77,21 @@ class APZmediaLogoOverlay:
             logo_tensor = brand_assets.get(f"logo_{logo_selection}")
             logo_mask = brand_assets.get(f"logo_{logo_selection}_mask")
 
+            # Normalize logo_tensor to (3, H, W)
+            if logo_tensor is not None:
+                if logo_tensor.dim() == 4 and logo_tensor.shape[0] == 1 and logo_tensor.shape[3] == 3:
+                    logo_tensor = logo_tensor.squeeze(0).permute(2, 0, 1)  # (1, H, W, 3) -> (H, W, 3) -> (3, H, W)
+                elif logo_tensor.dim() == 3 and logo_tensor.shape[2] == 3:
+                    logo_tensor = logo_tensor.permute(2, 0, 1)  # (H, W, 3) -> (3, H, W)
+                elif logo_tensor.dim() == 4 and logo_tensor.shape[1] == 3:
+                    logo_tensor = logo_tensor.squeeze(0)  # (1, 3, H, W) -> (3, H, W)
+                # else: assume already (3, H, W)
+
+            if logo_mask is not None:
+                if logo_mask.dim() == 4 and logo_mask.shape[0] == 1:
+                    logo_mask = logo_mask.squeeze(0)  # (1, H, W) -> (H, W)
+                # else: assume already (H, W) or (1, H, W)
+
             if logo_tensor is None:
                 logger.error(f"Failed to load logo from brand_assets: {logo_selection}")
                 return self._create_error_overlay(background_image)
