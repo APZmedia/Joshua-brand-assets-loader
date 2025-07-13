@@ -62,6 +62,9 @@ class APZmediaLogoOverlay:
             Image with logo overlaid in (C, H, W) format
         """
         try:
+            # Normalize background image shape to (3, H, W)
+            background_image = self._normalize_input_shape(background_image)
+            
             # Input validation
             if not self._validate_inputs(background_image, logo_selection):
                 logger.error("Invalid inputs")
@@ -109,10 +112,49 @@ class APZmediaLogoOverlay:
             logger.info(f"[overlay_logo] result: shape={result.shape}, dtype={result.dtype}, min={result.min().item()}, max={result.max().item()}, mean={result.mean().item()}")
 
             return (result,)
-            
         except Exception as e:
             logger.error(f"Failed to overlay logo: {str(e)}")
             return self._create_error_overlay(background_image)
+
+    def _normalize_input_shape(self, background_image):
+        """Normalize background image to (3, H, W) format."""
+        try:
+            if not isinstance(background_image, torch.Tensor):
+                logger.error("Background image must be a PyTorch tensor")
+                return background_image
+            
+            logger.info(f"[_normalize_input_shape] input shape: {background_image.shape}")
+            
+            # Handle different input shapes
+            if background_image.dim() == 4:  # (1, H, W, 3) or (1, 3, H, W)
+                if background_image.shape[1] == 3:  # (1, 3, H, W)
+                    # Remove batch dimension
+                    background_image = background_image.squeeze(0)
+                elif background_image.shape[3] == 3:  # (1, H, W, 3)
+                    # Remove batch and permute to (3, H, W)
+                    background_image = background_image.squeeze(0).permute(2, 0, 1)
+                else:
+                    logger.error(f"Unexpected 4D tensor shape: {background_image.shape}")
+                    return background_image
+            elif background_image.dim() == 3:  # (3, H, W) or (H, W, 3)
+                if background_image.shape[0] == 3:  # Already (3, H, W)
+                    pass
+                elif background_image.shape[2] == 3:  # (H, W, 3)
+                    # Permute to (3, H, W)
+                    background_image = background_image.permute(2, 0, 1)
+                else:
+                    logger.error(f"Unexpected 3D tensor shape: {background_image.shape}")
+                    return background_image
+            else:
+                logger.error(f"Background image must be 3D or 4D tensor, got {background_image.dim()}D")
+                return background_image
+            
+            logger.info(f"[_normalize_input_shape] normalized shape: {background_image.shape}")
+            return background_image
+            
+        except Exception as e:
+            logger.error(f"Failed to normalize input shape: {str(e)}")
+            return background_image
 
     def _validate_inputs(self, background_image, logo_selection):
         """Validate input parameters."""
@@ -122,8 +164,9 @@ class APZmediaLogoOverlay:
                 logger.error("Background image must be a PyTorch tensor")
                 return False
             
+            # Check if it's a 3D tensor with 3 channels (RGB)
             if background_image.dim() != 3 or background_image.shape[0] != 3:
-                logger.error("Background image must be 3D tensor with 3 channels (RGB)")
+                logger.error(f"Background image must be 3D tensor with 3 channels (RGB), got shape {background_image.shape}")
                 return False
             
             # Check if brand assets are loaded
@@ -152,6 +195,9 @@ class APZmediaLogoOverlay:
                 logger.error(f"Logo not found in global state: {logo_selection}")
                 return None, None, False
             
+            # Normalize logo tensor shape to (3, H, W)
+            logo_tensor = self._normalize_logo_shape(logo_tensor)
+            
             # Check if mask has meaningful alpha (not all white)
             has_alpha = torch.any(logo_mask < 1.0)
             
@@ -160,6 +206,46 @@ class APZmediaLogoOverlay:
         except Exception as e:
             logger.error(f"Failed to load logo from global state: {str(e)}")
             return None, None, False
+
+    def _normalize_logo_shape(self, logo_tensor):
+        """Normalize logo tensor to (3, H, W) format."""
+        try:
+            if not isinstance(logo_tensor, torch.Tensor):
+                logger.error("Logo tensor must be a PyTorch tensor")
+                return logo_tensor
+            
+            logger.info(f"[_normalize_logo_shape] input shape: {logo_tensor.shape}")
+            
+            # Handle different input shapes
+            if logo_tensor.dim() == 4:  # (1, H, W, 3) or (1, 3, H, W)
+                if logo_tensor.shape[1] == 3:  # (1, 3, H, W)
+                    # Remove batch dimension
+                    logo_tensor = logo_tensor.squeeze(0)
+                elif logo_tensor.shape[3] == 3:  # (1, H, W, 3)
+                    # Remove batch and permute to (3, H, W)
+                    logo_tensor = logo_tensor.squeeze(0).permute(2, 0, 1)
+                else:
+                    logger.error(f"Unexpected 4D logo tensor shape: {logo_tensor.shape}")
+                    return logo_tensor
+            elif logo_tensor.dim() == 3:  # (3, H, W) or (H, W, 3)
+                if logo_tensor.shape[0] == 3:  # Already (3, H, W)
+                    pass
+                elif logo_tensor.shape[2] == 3:  # (H, W, 3)
+                    # Permute to (3, H, W)
+                    logo_tensor = logo_tensor.permute(2, 0, 1)
+                else:
+                    logger.error(f"Unexpected 3D logo tensor shape: {logo_tensor.shape}")
+                    return logo_tensor
+            else:
+                logger.error(f"Logo tensor must be 3D or 4D tensor, got {logo_tensor.dim()}D")
+                return logo_tensor
+            
+            logger.info(f"[_normalize_logo_shape] normalized shape: {logo_tensor.shape}")
+            return logo_tensor
+            
+        except Exception as e:
+            logger.error(f"Failed to normalize logo shape: {str(e)}")
+            return logo_tensor
 
 
 
