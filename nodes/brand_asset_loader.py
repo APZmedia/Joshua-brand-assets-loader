@@ -414,39 +414,48 @@ class APZmediaBrandAssetLoader:
 
     def _load_logo_from_path(self, file_path: str) -> Tuple[torch.Tensor, torch.Tensor]:
         """Load logo from file path with path traversal protection. Returns (rgb_image, alpha_mask)."""
+        print(f"[BrandAssetLoader] Trying to load logo from: {file_path}")
         if not file_path:
+            print("[BrandAssetLoader] No file path provided.")
             return self._create_empty_logo(), self._create_empty_mask()
         
         # Validate and sanitize file path
         if not self._is_safe_file_path(file_path):
-            logger.warning("Unsafe file path detected")
+            print(f"[BrandAssetLoader] Unsafe file path detected: {file_path}")
             return self._create_empty_logo(), self._create_empty_mask()
         
         try:
             if not os.path.exists(file_path):
+                print(f"[BrandAssetLoader] File does not exist: {file_path}")
                 return self._create_empty_logo(), self._create_empty_mask()
+            print(f"[BrandAssetLoader] File exists: {file_path}")
             
             # Check file size
             file_size = os.path.getsize(file_path)
+            print(f"[BrandAssetLoader] File size: {file_size} bytes")
             if file_size > self.MAX_FILE_SIZE:
-                logger.warning(f"Logo file too large: {file_size} bytes")
+                print(f"[BrandAssetLoader] Logo file too large: {file_size} bytes")
                 return self._create_empty_logo(), self._create_empty_mask()
             
             if not self._is_valid_image_file(file_path):
-                logger.warning("Invalid image file format")
+                print(f"[BrandAssetLoader] Invalid image file format: {file_path}")
                 return self._create_empty_logo(), self._create_empty_mask()
             
             image = Image.open(file_path)
+            print(f"[BrandAssetLoader] Loaded image: size={image.size}, mode={image.mode}")
             
             # Validate image dimensions
             if image.width > self.MAX_IMAGE_DIMENSION or image.height > self.MAX_IMAGE_DIMENSION:
-                logger.warning(f"Logo image too large: {image.width}x{image.height}")
+                print(f"[BrandAssetLoader] Logo image too large: {image.width}x{image.height}")
                 return self._create_empty_logo(), self._create_empty_mask()
             
-            return self._process_logo_image(image)
+            rgb_tensor, alpha_tensor = self._process_logo_image(image)
+            print(f"[BrandAssetLoader] RGB tensor shape: {rgb_tensor.shape}, min/max: {rgb_tensor.min().item()}/{rgb_tensor.max().item()}")
+            print(f"[BrandAssetLoader] Alpha tensor shape: {alpha_tensor.shape}, min/max: {alpha_tensor.min().item()}/{alpha_tensor.max().item()}")
+            return rgb_tensor, alpha_tensor
             
         except Exception as e:
-            logger.error("Failed to load logo from path")
+            print(f"[BrandAssetLoader] Exception loading logo: {e}")
             return self._create_empty_logo(), self._create_empty_mask()
 
     def _validate_font_url(self, url: str) -> str:
