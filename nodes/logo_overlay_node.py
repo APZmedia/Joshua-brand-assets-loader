@@ -131,7 +131,6 @@ class APZmediaLogoOverlay:
 
             # Convert result from (3, H, W) to (1, H, W, 3) for ComfyUI
             if result.dim() == 3 and result.shape[0] == 3:
-                result = result[[2, 1, 0], :, :]  # Swap R and B channels
                 result = result.permute(1, 2, 0).unsqueeze(0)  # (3, H, W) -> (H, W, 3) -> (1, H, W, 3)
                 logger.info(f"[overlay_logo] final output shape: {result.shape}")
             else:
@@ -406,7 +405,6 @@ class APZmediaLogoOverlay:
             
             # Convert error image to (1, H, W, 3) for ComfyUI
             if error_image.dim() == 3 and error_image.shape[0] == 3:
-                error_image = error_image[[2, 1, 0], :, :]  # Swap R and B channels
                 error_image = error_image.permute(1, 2, 0).unsqueeze(0)
             return (error_image,)
             
