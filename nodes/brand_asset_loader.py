@@ -349,11 +349,11 @@ class APZmediaBrandAssetLoader:
             global_brand_state.set_brand_assets(assets_dict)
             
             return (
-                [self._to_hw3(logo_vertical_color_img)], [logo_vertical_color_mask.squeeze(0)],
-                [self._to_hw3(logo_vertical_mono_img)], [logo_vertical_mono_mask.squeeze(0)],
-                [self._to_hw3(logo_horizontal_color_img)], [logo_horizontal_color_mask.squeeze(0)],
-                [self._to_hw3(logo_horizontal_mono_img)], [logo_horizontal_mono_mask.squeeze(0)],
-                [self._to_hw3(logo_icon_img)], [logo_icon_mask.squeeze(0)],
+                [self._to_hw3(logo_vertical_color_img)], logo_vertical_color_mask.squeeze(0),
+                [self._to_hw3(logo_vertical_mono_img)], logo_vertical_mono_mask.squeeze(0),
+                [self._to_hw3(logo_horizontal_color_img)], logo_horizontal_color_mask.squeeze(0),
+                [self._to_hw3(logo_horizontal_mono_img)], logo_horizontal_mono_mask.squeeze(0),
+                [self._to_hw3(logo_icon_img)], logo_icon_mask.squeeze(0),
                 primary_font_path, primary_bold_font_path, primary_italic_font_path,
                 secondary_font_path, secondary_bold_font_path, secondary_italic_font_path,
                 tertiary_font_path, tertiary_bold_font_path, tertiary_italic_font_path,
@@ -637,12 +637,12 @@ class APZmediaBrandAssetLoader:
         empty_logo = self._create_empty_logo()
         empty_mask = self._create_empty_mask()
         return (
-            [self._to_hw3(empty_logo)], [empty_mask.squeeze(0)], [self._to_hw3(empty_logo)], [empty_mask.squeeze(0)], [self._to_hw3(empty_logo)], [empty_mask.squeeze(0)], 
-            [self._to_hw3(empty_logo)], [empty_mask.squeeze(0)], [self._to_hw3(empty_logo)], [empty_mask.squeeze(0)],  # logos with masks
-            "", "", "", "", "", "", "", "", "",  # font paths (primary, primary_bold, primary_italic, secondary, secondary_bold, secondary_italic, tertiary, tertiary_bold, tertiary_italic)
-            self._get_default_color_palette(),  # default color palette
-            "Unknown Brand",  # brand name
-            status_message  # status message
+            [self._to_hw3(empty_logo)], empty_mask.squeeze(0), [self._to_hw3(empty_logo)], empty_mask.squeeze(0), [self._to_hw3(empty_logo)], empty_mask.squeeze(0),
+            [self._to_hw3(empty_logo)], empty_mask.squeeze(0), [self._to_hw3(empty_logo)], empty_mask.squeeze(0),
+            "", "", "", "", "", "", "", "", "",
+            self._get_default_color_palette(),
+            "Unknown Brand",
+            status_message
         )
 
 NODE_CLASS_MAPPINGS = {
