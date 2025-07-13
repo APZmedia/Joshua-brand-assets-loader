@@ -349,11 +349,11 @@ class APZmediaBrandAssetLoader:
             global_brand_state.set_brand_assets(assets_dict)
             
             return (
-                [logo_vertical_color_img], logo_vertical_color_mask.squeeze(0),
-                [logo_vertical_mono_img], logo_vertical_mono_mask.squeeze(0),
-                [logo_horizontal_color_img], logo_horizontal_color_mask.squeeze(0),
-                [logo_horizontal_mono_img], logo_horizontal_mono_mask.squeeze(0),
-                [logo_icon_img], logo_icon_mask.squeeze(0),
+                [logo_vertical_color_img], logo_vertical_color_mask,
+                [logo_vertical_mono_img], logo_vertical_mono_mask,
+                [logo_horizontal_color_img], logo_horizontal_color_mask,
+                [logo_horizontal_mono_img], logo_horizontal_mono_mask,
+                [logo_icon_img], logo_icon_mask,
                 primary_font_path, primary_bold_font_path, primary_italic_font_path,
                 secondary_font_path, secondary_bold_font_path, secondary_italic_font_path,
                 tertiary_font_path, tertiary_bold_font_path, tertiary_italic_font_path,
@@ -630,8 +630,8 @@ class APZmediaBrandAssetLoader:
         empty_logo = self._create_empty_logo()
         empty_mask = self._create_empty_mask()
         return (
-            [empty_logo], empty_mask.squeeze(0), [empty_logo], empty_mask.squeeze(0), [empty_logo], empty_mask.squeeze(0),
-            [empty_logo], empty_mask.squeeze(0), [empty_logo], empty_mask.squeeze(0),
+            [empty_logo], empty_mask, [empty_logo], empty_mask, [empty_logo], empty_mask,
+            [empty_logo], empty_mask, [empty_logo], empty_mask,
             "", "", "", "", "", "", "", "", "",
             self._get_default_color_palette(),
             "Unknown Brand",
