@@ -368,7 +368,7 @@ class APZmediaBrandAssetLoader:
             }
             global_brand_state.set_brand_assets(assets_dict)
             
-            return (
+            outputs = (
                 logo_vertical_color_img, logo_vertical_color_mask,
                 logo_vertical_mono_img, logo_vertical_mono_mask,
                 logo_horizontal_color_img, logo_horizontal_color_mask,
@@ -379,7 +379,12 @@ class APZmediaBrandAssetLoader:
                 tertiary_font_path, tertiary_bold_font_path, tertiary_italic_font_path,
                 color_palette, brand_name, status_message
             )
-
+            for idx, val in enumerate(outputs):
+                if isinstance(val, torch.Tensor):
+                    print(f"[BrandAssetLoader] Output {idx}: type={type(val)}, shape={tuple(val.shape)}, dtype={val.dtype}")
+                else:
+                    print(f"[BrandAssetLoader] Output {idx}: type={type(val)}, value={val if len(str(val)) < 100 else str(val)[:100] + '...'}")
+            return outputs
         except Exception:
             return self._return_defaults("Manual Loading Error: Failed to load assets")
 
