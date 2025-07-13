@@ -380,8 +380,7 @@ class APZmediaBrandAssetLoader:
                 color_palette, brand_name, status_message
             )
 
-        except Exception as e:
-            logger.error(f"Manual Loading Error: Failed to load assets: {e}")
+        except Exception:
             return self._return_defaults("Manual Loading Error: Failed to load assets")
 
     def _load_logo_from_url(self, url: str) -> Tuple[torch.Tensor, torch.Tensor]:
