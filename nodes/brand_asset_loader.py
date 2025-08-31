@@ -4,6 +4,9 @@ import requests
 import json
 import re
 import urllib.parse
+import subprocess
+import time
+import tempfile
 from PIL import Image
 import numpy as np
 import logging
@@ -51,6 +54,10 @@ class APZmediaBrandAssetLoader:
                 "api_base_url": ("STRING", {"default": "https://api.example.com", "multiline": False}),
                 "api_token": ("STRING", {"default": "", "multiline": False}),
                 
+                # Download Configuration
+                "use_aria2c": ("BOOLEAN", {"default": True}),
+                "download_timeout": ("INT", {"default": 30, "min": 10, "max": 300}),
+                
                 # Logo Assets
                 "logo_vertical_color": ("STRING", {"default": "", "multiline": False}),
                 "logo_vertical_mono": ("STRING", {"default": "", "multiline": False}),
@@ -96,6 +103,7 @@ class APZmediaBrandAssetLoader:
     CATEGORY = "apzmedia_brand"
 
     def load_brand_assets(self, load_method, api_brand_id="", api_base_url="", api_token="", 
+                         use_aria2c=True, download_timeout=30,
                          logo_vertical_color="", logo_vertical_mono="", 
                          logo_horizontal_color="", logo_horizontal_mono="", 
                          logo_icon="", font_primary="", font_primary_bold="", font_primary_italic="",
@@ -118,20 +126,21 @@ class APZmediaBrandAssetLoader:
         """
         try:
             if load_method == "api":
-                return self._load_from_api(api_brand_id, api_base_url, api_token)
+                return self._load_from_api(api_brand_id, api_base_url, api_token, use_aria2c, download_timeout)
             else:
                 return self._load_manual(
                     logo_vertical_color, logo_vertical_mono,
                     logo_horizontal_color, logo_horizontal_mono,
                     logo_icon, font_primary, font_primary_bold, font_primary_italic,
                     font_secondary, font_secondary_bold, font_secondary_italic,
-                    font_tertiary, font_tertiary_bold, font_tertiary_italic, color_palette
+                    font_tertiary, font_tertiary_bold, font_tertiary_italic, color_palette,
+                    use_aria2c, download_timeout
                 )
         except Exception as e:
             logger.error(f"Failed to load brand assets: {e}")
             return self._return_defaults("Error: Asset loading failed")
 
-    def _load_from_api(self, brand_id: str, api_base_url: str, api_token: str) -> Tuple:
+    def _load_from_api(self, brand_id: str, api_base_url: str, api_token: str, use_aria2c: bool = True, download_timeout: int = 30) -> Tuple:
         """Load brand assets from API."""
         try:
             if not brand_id or not api_base_url:
@@ -175,73 +184,73 @@ class APZmediaBrandAssetLoader:
             brand_data = response.json()
             brand_name = brand_data.get("name", "Unknown Brand")
             
-            # Load logos with URL validation
+            # Load logos with URL validation and download support
             logos = brand_data.get("logos", {})
-            logo_vertical_color, logo_vertical_color_mask = self._load_logo_from_url(logos.get("verticalColor", {}).get("url", ""))
-            logo_vertical_mono, logo_vertical_mono_mask = self._load_logo_from_url(logos.get("verticalMonocolor", {}).get("url", ""))
-            logo_horizontal_color, logo_horizontal_color_mask = self._load_logo_from_url(logos.get("horizontalColor", {}).get("url", ""))
-            logo_horizontal_mono, logo_horizontal_mono_mask = self._load_logo_from_url(logos.get("horizontalMonocolor", {}).get("url", ""))
-            logo_icon, logo_icon_mask = self._load_logo_from_url(logos.get("icon", {}).get("url", ""))
+            logo_vertical_color, logo_vertical_color_mask = self._load_logo_from_url(logos.get("verticalColor", {}).get("url", ""), use_aria2c, download_timeout)
+            logo_vertical_mono, logo_vertical_mono_mask = self._load_logo_from_url(logos.get("verticalMonocolor", {}).get("url", ""), use_aria2c, download_timeout)
+            logo_horizontal_color, logo_horizontal_color_mask = self._load_logo_from_url(logos.get("horizontalColor", {}).get("url", ""), use_aria2c, download_timeout)
+            logo_horizontal_mono, logo_horizontal_mono_mask = self._load_logo_from_url(logos.get("horizontalMonocolor", {}).get("url", ""), use_aria2c, download_timeout)
+            logo_icon, logo_icon_mask = self._load_logo_from_url(logos.get("icon", {}).get("url", ""), use_aria2c, download_timeout)
 
             # Load fonts with URL validation
             fonts = brand_data.get("fonts", {})
             
             # Primary font variants
-            primary_font_path = self._validate_font_url(fonts.get("primary", {}).get("variableFontFile", {}).get("url", ""))
+            primary_font_path = self._process_font_url(fonts.get("primary", {}).get("variableFontFile", {}).get("url", ""), use_aria2c, download_timeout)
             if not primary_font_path:
                 static_files = fonts.get("primary", {}).get("staticFontFiles", [])
                 if static_files:
-                    primary_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+                    primary_font_path = self._process_font_url(static_files[0].get("fontFile", {}).get("url", ""), use_aria2c, download_timeout)
             
-            primary_bold_font_path = self._validate_font_url(fonts.get("primaryBold", {}).get("variableFontFile", {}).get("url", ""))
+            primary_bold_font_path = self._process_font_url(fonts.get("primaryBold", {}).get("variableFontFile", {}).get("url", ""), use_aria2c, download_timeout)
             if not primary_bold_font_path:
                 static_files = fonts.get("primaryBold", {}).get("staticFontFiles", [])
                 if static_files:
-                    primary_bold_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+                    primary_bold_font_path = self._process_font_url(static_files[0].get("fontFile", {}).get("url", ""), use_aria2c, download_timeout)
             
-            primary_italic_font_path = self._validate_font_url(fonts.get("primaryItalic", {}).get("variableFontFile", {}).get("url", ""))
+            primary_italic_font_path = self._process_font_url(fonts.get("primaryItalic", {}).get("variableFontFile", {}).get("url", ""), use_aria2c, download_timeout)
             if not primary_italic_font_path:
                 static_files = fonts.get("primaryItalic", {}).get("staticFontFiles", [])
                 if static_files:
-                    primary_italic_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+                    primary_italic_font_path = self._process_font_url(static_files[0].get("fontFile", {}).get("url", ""), use_aria2c, download_timeout)
             
             # Secondary font variants
-            secondary_font_path = self._validate_font_url(fonts.get("secondary", {}).get("variableFontFile", {}).get("url", ""))
+            secondary_font_path = self._process_font_url(fonts.get("secondary", {}).get("variableFontFile", {}).get("url", ""), use_aria2c, download_timeout)
             if not secondary_font_path:
                 static_files = fonts.get("secondary", {}).get("staticFontFiles", [])
                 if static_files:
-                    secondary_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+                    secondary_font_path = self._process_font_url(static_files[0].get("fontFile", {}).get("url", ""), use_aria2c, download_timeout)
             
-            secondary_bold_font_path = self._validate_font_url(fonts.get("secondaryBold", {}).get("variableFontFile", {}).get("url", ""))
+            secondary_bold_font_path = self._process_font_url(fonts.get("secondaryBold", {}).get("variableFontFile", {}).get("url", ""), use_aria2c, download_timeout)
             if not secondary_bold_font_path:
                 static_files = fonts.get("secondaryBold", {}).get("staticFontFiles", [])
                 if static_files:
-                    secondary_bold_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+                    secondary_bold_font_path = self._process_font_url(static_files[0].get("fontFile", {}).get("url", ""), use_aria2c, download_timeout)
             
-            secondary_italic_font_path = self._validate_font_url(fonts.get("secondaryItalic", {}).get("variableFontFile", {}).get("url", ""))
+            secondary_italic_font_path = self._process_font_url(fonts.get("secondaryItalic", {}).get("variableFontFile", {}).get("url", ""), use_aria2c, download_timeout)
             if not secondary_italic_font_path:
                 static_files = fonts.get("secondaryItalic", {}).get("staticFontFiles", [])
                 if static_files:
-                    secondary_italic_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+                    secondary_italic_font_path = self._process_font_url(static_files[0].get("fontFile", {}).get("url", ""), use_aria2c, download_timeout)
             
             # Tertiary font variants
-            tertiary_font_path = self._validate_font_url(fonts.get("tertiary", {}).get("variableFontFile", {}).get("url", ""))
+            tertiary_font_path = self._process_font_url(fonts.get("tertiary", {}).get("variableFontFile", {}).get("url", ""), use_aria2c, download_timeout)
             if not tertiary_font_path:
                 static_files = fonts.get("tertiary", {}).get("staticFontFiles", [])
                 if static_files:
-                    tertiary_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+                    tertiary_font_path = self._process_font_url(static_files[0].get("fontFile", {}).get("url", ""), use_aria2c, download_timeout)
             
-            tertiary_bold_font_path = self._validate_font_url(fonts.get("tertiaryBold", {}).get("variableFontFile", {}).get("url", ""))
+            tertiary_bold_font_path = self._process_font_url(fonts.get("tertiaryBold", {}).get("variableFontFile", {}).get("url", ""), use_aria2c, download_timeout)
             if not tertiary_bold_font_path:
                 static_files = fonts.get("tertiaryBold", {}).get("staticFontFiles", [])
                 if static_files:
-                    tertiary_bold_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+                    tertiary_bold_font_path = self._process_font_url(static_files[0].get("fontFile", {}).get("url", ""), use_aria2c, download_timeout)
             
-            tertiary_italic_font_path = self._validate_font_url(fonts.get("tertiaryItalic", {}).get("variableFontFile", {}).get("url", ""))
+            tertiary_italic_font_path = self._process_font_url(fonts.get("tertiaryItalic", {}).get("variableFontFile", {}).get("url", ""), use_aria2c, download_timeout)
             if not tertiary_italic_font_path:
                 static_files = fonts.get("tertiaryItalic", {}).get("staticFontFiles", [])
                 if static_files:
-                    tertiary_italic_font_path = self._validate_font_url(static_files[0].get("fontFile", {}).get("url", ""))
+                    tertiary_italic_font_path = self._process_font_url(static_files[0].get("fontFile", {}).get("url", ""), use_aria2c, download_timeout)
 
             # Load color palette
             color_palette = brand_data.get("colorPalette", [])
@@ -303,26 +312,27 @@ class APZmediaBrandAssetLoader:
                     logo_horizontal_color, logo_horizontal_mono, 
                     logo_icon, font_primary, font_primary_bold, font_primary_italic,
                     font_secondary, font_secondary_bold, font_secondary_italic,
-                    font_tertiary, font_tertiary_bold, font_tertiary_italic, color_palette) -> Tuple:
+                    font_tertiary, font_tertiary_bold, font_tertiary_italic, color_palette,
+                    use_aria2c=True, download_timeout=30) -> Tuple:
         """Load brand assets from manual file paths."""
         try:
             # Load logos from file paths with path validation
-            logo_vertical_color_img, logo_vertical_color_mask = self._load_logo_from_path(logo_vertical_color)
-            logo_vertical_mono_img, logo_vertical_mono_mask = self._load_logo_from_path(logo_vertical_mono)
-            logo_horizontal_color_img, logo_horizontal_color_mask = self._load_logo_from_path(logo_horizontal_color)
-            logo_horizontal_mono_img, logo_horizontal_mono_mask = self._load_logo_from_path(logo_horizontal_mono)
-            logo_icon_img, logo_icon_mask = self._load_logo_from_path(logo_icon)
+            logo_vertical_color_img, logo_vertical_color_mask = self._load_logo_from_path(logo_vertical_color, use_aria2c, download_timeout)
+            logo_vertical_mono_img, logo_vertical_mono_mask = self._load_logo_from_path(logo_vertical_mono, use_aria2c, download_timeout)
+            logo_horizontal_color_img, logo_horizontal_color_mask = self._load_logo_from_path(logo_horizontal_color, use_aria2c, download_timeout)
+            logo_horizontal_mono_img, logo_horizontal_mono_mask = self._load_logo_from_path(logo_horizontal_mono, use_aria2c, download_timeout)
+            logo_icon_img, logo_icon_mask = self._load_logo_from_path(logo_icon, use_aria2c, download_timeout)
 
-            # Validate font paths
-            primary_font_path = font_primary if self._is_valid_font_file(font_primary) else ""
-            primary_bold_font_path = font_primary_bold if self._is_valid_font_file(font_primary_bold) else ""
-            primary_italic_font_path = font_primary_italic if self._is_valid_font_file(font_primary_italic) else ""
-            secondary_font_path = font_secondary if self._is_valid_font_file(font_secondary) else ""
-            secondary_bold_font_path = font_secondary_bold if self._is_valid_font_file(font_secondary_bold) else ""
-            secondary_italic_font_path = font_secondary_italic if self._is_valid_font_file(font_secondary_italic) else ""
-            tertiary_font_path = font_tertiary if self._is_valid_font_file(font_tertiary) else ""
-            tertiary_bold_font_path = font_tertiary_bold if self._is_valid_font_file(font_tertiary_bold) else ""
-            tertiary_italic_font_path = font_tertiary_italic if self._is_valid_font_file(font_tertiary_italic) else ""
+            # Validate and download font paths if they are URLs
+            primary_font_path = self._process_font_input(font_primary, use_aria2c, download_timeout)
+            primary_bold_font_path = self._process_font_input(font_primary_bold, use_aria2c, download_timeout)
+            primary_italic_font_path = self._process_font_input(font_primary_italic, use_aria2c, download_timeout)
+            secondary_font_path = self._process_font_input(font_secondary, use_aria2c, download_timeout)
+            secondary_bold_font_path = self._process_font_input(font_secondary_bold, use_aria2c, download_timeout)
+            secondary_italic_font_path = self._process_font_input(font_secondary_italic, use_aria2c, download_timeout)
+            tertiary_font_path = self._process_font_input(font_tertiary, use_aria2c, download_timeout)
+            tertiary_bold_font_path = self._process_font_input(font_tertiary_bold, use_aria2c, download_timeout)
+            tertiary_italic_font_path = self._process_font_input(font_tertiary_italic, use_aria2c, download_timeout)
 
             # Validate color palette JSON
             if color_palette:
@@ -383,7 +393,7 @@ class APZmediaBrandAssetLoader:
         except Exception:
             return self._return_defaults("Manual Loading Error: Failed to load assets")
 
-    def _load_logo_from_url(self, url: str) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _load_logo_from_url(self, url: str, use_aria2c: bool = True, download_timeout: int = 30) -> Tuple[torch.Tensor, torch.Tensor]:
         """Load logo from URL with security validation. Returns (rgb_image, alpha_mask)."""
         if not url:
             return self._create_empty_logo(), self._create_empty_mask()
@@ -435,12 +445,23 @@ class APZmediaBrandAssetLoader:
             logger.error(f"Failed to load logo from URL {url}: {e}")
             return self._create_empty_logo(), self._create_empty_mask()
 
-    def _load_logo_from_path(self, file_path: str) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Load logo from file path with path traversal protection. Returns (rgb_image, alpha_mask)."""
+    def _load_logo_from_path(self, file_path: str, use_aria2c: bool = True, download_timeout: int = 30) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Load logo from file path or URL with automatic download. Returns (rgb_image, alpha_mask)."""
         logger.info(f"[BrandAssetLoader] Trying to load logo from: {file_path}")
         if not file_path:
             logger.info("[BrandAssetLoader] No file path provided.")
             return self._create_empty_logo(), self._create_empty_mask()
+        
+        # Check if input is a URL (including signed URLs)
+        if self._is_url(file_path):
+            logger.info(f"[BrandAssetLoader] Detected URL, downloading: {file_path}")
+            downloaded_path = self._download_file_from_url(file_path, file_type="auto", use_aria2c=use_aria2c, download_timeout=download_timeout)
+            if not downloaded_path:
+                logger.warning(f"[BrandAssetLoader] Failed to download from URL: {file_path}")
+                return self._create_empty_logo(), self._create_empty_mask()
+            
+            logger.info(f"[BrandAssetLoader] Downloaded to: {downloaded_path}")
+            file_path = downloaded_path
         
         # Validate and sanitize file path
         if not self._is_safe_file_path(file_path):
@@ -497,6 +518,50 @@ class APZmediaBrandAssetLoader:
         
         return url
 
+    def _is_url(self, input_string: str) -> bool:
+        """Check if input string is a URL (including signed URLs)."""
+        if not input_string or not isinstance(input_string, str):
+            return False
+        
+        # Check for common URL patterns including signed URLs
+        url_patterns = [
+            r'^https?://',  # Standard HTTP/HTTPS
+            r'^ftp://',     # FTP
+            r'^s3://',      # S3 URLs
+            r'^gs://',      # Google Cloud Storage
+            r'^azure://',   # Azure Blob Storage
+            r'^blob:',      # Blob URLs
+            r'^data:',      # Data URLs
+        ]
+        
+        for pattern in url_patterns:
+            if re.match(pattern, input_string, re.IGNORECASE):
+                return True
+        
+        # Check for signed URLs (containing query parameters)
+        if '?' in input_string:
+            signed_url_params = [
+                # Standard signed URL parameters
+                'signature=', 'token=', 'expires=', 'access_key=',
+                # AWS S3 signed URL parameters
+                'x-amz-algorithm=', 'x-amz-credential=', 'x-amz-date=',
+                'x-amz-expires=', 'x-amz-signedheaders=', 'x-amz-signature=',
+                # Cloudflare R2 signed URL parameters (same as S3)
+                'x-amz-algorithm=', 'x-amz-credential=', 'x-amz-date=',
+                'x-amz-expires=', 'x-amz-signedheaders=', 'x-amz-signature=',
+                # Google Cloud Storage signed URL parameters
+                'googleaccessid=', 'expires=', 'signature=',
+                # Azure Blob Storage signed URL parameters
+                'sv=', 'sr=', 'sig=', 'st=', 'se=',
+                # Generic signed URL patterns
+                'auth=', 'key=', 'id=', 'secret='
+            ]
+            
+            if any(param in input_string.lower() for param in signed_url_params):
+                return True
+        
+        return False
+
     def _is_valid_url(self, url: str) -> bool:
         """Validate URL format and security."""
         try:
@@ -528,6 +593,137 @@ class APZmediaBrandAssetLoader:
         except Exception as e:
             logger.warning(f"Error parsing or validating URL {url}: {e}")
             return False
+
+    def _download_file_from_url(self, url: str, file_type: str = "auto", use_aria2c: bool = True, download_timeout: int = 30) -> str:
+        """
+        Download file from URL to a temporary location.
+        
+        Args:
+            url: URL to download from (supports signed URLs)
+            file_type: File extension or "auto" to detect from URL
+            use_aria2c: Whether to use aria2c for faster downloads
+            
+        Returns:
+            Path to downloaded file or empty string if failed
+        """
+        if not url or not self._is_url(url):
+            logger.warning(f"Invalid URL provided for download: {url}")
+            return ""
+        
+        try:
+            # Create temporary directory for downloads
+            temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'download_temp')
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # Determine file extension
+            if file_type == "auto":
+                file_type = self._get_file_extension_from_url(url) or "tmp"
+            
+            # Generate unique filename
+            timestamp = int(time.time())
+            filename = f'download-{timestamp}.{file_type}'
+            file_path = os.path.join(temp_dir, filename)
+            
+            logger.info(f"Downloading file from {url} to {file_path}")
+            
+            if use_aria2c and self._is_aria2c_available():
+                # Use aria2c for faster downloads
+                return self._download_with_aria2c(url, file_path, temp_dir)
+            else:
+                # Fallback to requests
+                return self._download_with_requests(url, file_path, download_timeout)
+                
+        except Exception as e:
+            logger.error(f"Failed to download file from {url}: {e}")
+            return ""
+
+    def _get_file_extension_from_url(self, url: str) -> str:
+        """Extract file extension from URL."""
+        try:
+            parsed_url = urllib.parse.urlparse(url)
+            path = parsed_url.path
+            filename = os.path.basename(path)
+            
+            # Remove query parameters if present
+            if '?' in filename:
+                filename = filename.split('?')[0]
+            
+            match = re.search(r'\.([a-zA-Z0-9]+)$', filename)
+            if match:
+                return match.group(1).lower()
+        except Exception as e:
+            logger.debug(f"Error extracting file extension from URL {url}: {e}")
+        
+        return ""
+
+    def _is_aria2c_available(self) -> bool:
+        """Check if aria2c is available on the system."""
+        try:
+            subprocess.run(["aria2c", "--version"], capture_output=True, check=True)
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+
+    def _download_with_aria2c(self, url: str, file_path: str, temp_dir: str) -> str:
+        """Download file using aria2c for better performance."""
+        try:
+            filename = os.path.basename(file_path)
+            cmd = [
+                "aria2c", 
+                "-o", filename,
+                "-x", "16",  # 16 connections
+                "-s", "16",  # 16 splits
+                url, 
+                "-d", temp_dir
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            logger.info(f"aria2c download completed: {result.stdout}")
+            
+            # Verify file was downloaded
+            if os.path.exists(file_path):
+                file_size = os.path.getsize(file_path)
+                logger.info(f"Downloaded file size: {file_size} bytes")
+                return file_path
+            else:
+                logger.error("File not found after aria2c download")
+                return ""
+                
+        except subprocess.CalledProcessError as e:
+            logger.error(f"aria2c download failed: {e.stderr}")
+            return ""
+
+    def _download_with_requests(self, url: str, file_path: str, timeout: int = 30) -> str:
+        """Download file using requests as fallback."""
+        try:
+            response = requests.get(url, stream=True, timeout=timeout)
+            response.raise_for_status()
+            
+            # Check content length
+            content_length = response.headers.get('content-length')
+            if content_length and int(content_length) > self.MAX_FILE_SIZE:
+                logger.warning(f"File too large: {content_length} bytes")
+                return ""
+            
+            # Download file
+            with open(file_path, 'wb') as f:
+                downloaded_size = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        downloaded_size += len(chunk)
+                        if downloaded_size > self.MAX_FILE_SIZE:
+                            logger.warning("File exceeds size limit during download")
+                            f.close()
+                            os.remove(file_path)
+                            return ""
+                        f.write(chunk)
+            
+            logger.info(f"Downloaded file: {file_path}")
+            return file_path
+            
+        except Exception as e:
+            logger.error(f"Requests download failed: {e}")
+            return ""
 
     def _is_valid_brand_id(self, brand_id: str) -> bool:
         """Validate brand ID format."""
@@ -646,10 +842,63 @@ class APZmediaBrandAssetLoader:
         supported_extensions = [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"]
         return any(file_path.lower().endswith(ext) for ext in supported_extensions)
 
+    def _process_font_url(self, url: str, use_aria2c: bool = True, download_timeout: int = 30) -> str:
+        """Process font URL - download if valid, return path or empty string."""
+        if not url:
+            return ""
+        
+        if not self._is_valid_url(url):
+            logger.warning(f"Invalid font URL format: {url}")
+            return ""
+        
+        # Check if it's a font file (simple extension check for now)
+        if not any(ext in url.lower() for ext in ['.ttf', '.otf', '.woff', '.woff2']):
+            logger.warning(f"URL does not seem to be a font file: {url}")
+            return ""
+        
+        # Download the font file
+        logger.info(f"[BrandAssetLoader] Downloading font from URL: {url}")
+        downloaded_path = self._download_file_from_url(url, file_type="auto", use_aria2c=use_aria2c, download_timeout=download_timeout)
+        if not downloaded_path:
+            logger.warning(f"[BrandAssetLoader] Failed to download font from URL: {url}")
+            return ""
+        
+        logger.info(f"[BrandAssetLoader] Downloaded font to: {downloaded_path}")
+        return downloaded_path
+
+    def _process_font_input(self, font_input: str, use_aria2c: bool = True, download_timeout: int = 30) -> str:
+        """Process font input - download if URL, validate if file path."""
+        if not font_input:
+            return ""
+        
+        # Check if it's a URL
+        if self._is_url(font_input):
+            logger.info(f"[BrandAssetLoader] Detected font URL, downloading: {font_input}")
+            downloaded_path = self._download_file_from_url(font_input, file_type="auto", use_aria2c=use_aria2c, download_timeout=download_timeout)
+            if not downloaded_path:
+                logger.warning(f"[BrandAssetLoader] Failed to download font from URL: {font_input}")
+                return ""
+            
+            logger.info(f"[BrandAssetLoader] Downloaded font to: {downloaded_path}")
+            return downloaded_path
+        
+        # Validate local file path
+        if self._is_valid_font_file(font_input):
+            return font_input
+        
+        logger.warning(f"[BrandAssetLoader] Invalid font input: {font_input}")
+        return ""
+
     def _is_valid_font_file(self, file_path: str) -> bool:
-        """Validate if file is a supported font format."""
+        """Validate if file is a supported font format or URL."""
         if not file_path:
             return False
+        
+        # Check if it's a URL
+        if self._is_url(file_path):
+            # For URLs, check if it appears to be a font file
+            supported_extensions = [".ttf", ".otf", ".woff", ".woff2"]
+            return any(ext in file_path.lower() for ext in supported_extensions)
         
         # Check path safety first
         if not self._is_safe_file_path(file_path):
