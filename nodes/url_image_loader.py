@@ -65,49 +65,118 @@ class APZmediaURLImageLoader:
         try:
             # Input validation
             if not url or not url.strip():
-                return self._return_empty("Error: No URL provided")
+                return self._return_empty("❌ Error: No URL provided. Please enter a valid image URL.")
             
             url = url.strip()
             
             # Validate URL
-            if not self._is_valid_url(url):
-                return self._return_empty("Error: Invalid URL format")
+            url_validation_result = self._validate_url_detailed(url)
+            if not url_validation_result["valid"]:
+                return self._return_empty(f"❌ URL Validation Error: {url_validation_result['error']}")
             
             logger.info(f"Loading image from URL: {url[:100]}...")
             
             # Download image
-            image_data = self._download_image_from_url(url, use_aria2c, download_timeout)
-            if not image_data:
-                return self._return_empty("Error: Failed to download image from URL")
+            download_result = self._download_image_from_url(url, use_aria2c, download_timeout)
+            if not download_result["success"]:
+                return self._return_empty(f"❌ Download Error: {download_result['error']}")
+            
+            image_data = download_result["data"]
             
             # Process image
-            image_tensor, mask_tensor = self._process_image_data(
+            process_result = self._process_image_data_detailed(
                 image_data, max_width, max_height, resize_mode
             )
             
-            if image_tensor is None:
-                return self._return_empty("Error: Failed to process downloaded image")
+            if not process_result["success"]:
+                return self._return_empty(f"❌ Image Processing Error: {process_result['error']}")
             
-            status_message = f"Successfully loaded image from URL (size: {image_tensor.shape[1]}x{image_tensor.shape[2]})"
-            logger.info(status_message)
+            image_tensor, mask_tensor = process_result["tensors"]
+            original_size = process_result["original_size"]
+            final_size = process_result["final_size"]
+            resize_info = process_result["resize_info"]
+            
+            status_message = f"✅ Successfully loaded image from URL\n📏 Original: {original_size[0]}x{original_size[1]} → Final: {final_size[0]}x{final_size[1]}\n🔧 Resize: {resize_info}"
+            logger.info(f"Successfully loaded image: {original_size[0]}x{original_size[1]} → {final_size[0]}x{final_size[1]} ({resize_mode})")
             
             return (image_tensor, mask_tensor, status_message)
             
         except Exception as e:
+            error_msg = f"❌ Unexpected Error: {str(e)}\n💡 Tip: Check URL accessibility, network connection, and image format support"
             logger.error(f"Failed to load image from URL: {e}")
-            return self._return_empty(f"Error: {str(e)}")
+            return self._return_empty(error_msg)
 
-    def _download_image_from_url(self, url: str, use_aria2c: bool = True, download_timeout: int = 30) -> Optional[bytes]:
-        """Download image from URL and return raw bytes."""
+    def _validate_url_detailed(self, url: str) -> Dict[str, Union[bool, str]]:
+        """Validate URL with detailed error information."""
+        try:
+            parsed = urllib.parse.urlparse(url)
+            
+            # Check scheme (protocol)
+            if parsed.scheme not in self.ALLOWED_PROTOCOLS:
+                return {
+                    "valid": False,
+                    "error": f"Protocol '{parsed.scheme}' not allowed. Use HTTP or HTTPS only."
+                }
+            
+            # Check for domain restrictions if ALLOWED_DOMAINS is not empty
+            if self.ALLOWED_DOMAINS and parsed.netloc and parsed.netloc not in self.ALLOWED_DOMAINS:
+                return {
+                    "valid": False,
+                    "error": f"Domain '{parsed.netloc}' not in allowed list. Contact administrator."
+                }
+            
+            # Check for suspicious patterns
+            suspicious_patterns = [
+                ('file://', 'Local file URLs are not allowed for security reasons'),
+                ('ftp://', 'FTP protocol is not supported'),
+                ('gopher://', 'Gopher protocol is not supported'),
+                ('data:', 'Data URLs are not allowed for security reasons'),
+                ('javascript:', 'JavaScript URLs are not allowed for security reasons'),
+                ('vbscript:', 'VBScript URLs are not allowed for security reasons'),
+                ('onload=', 'Suspicious JavaScript code detected'),
+                ('onerror=', 'Suspicious JavaScript code detected'),
+                ('eval(', 'Suspicious JavaScript code detected'),
+                ('document.cookie', 'Suspicious JavaScript code detected')
+            ]
+            
+            url_lower = url.lower()
+            for pattern, message in suspicious_patterns:
+                if pattern in url_lower:
+                    return {
+                        "valid": False,
+                        "error": f"{message} (found: '{pattern}')"
+                    }
+            
+            return {"valid": True, "error": ""}
+            
+        except Exception as e:
+            return {
+                "valid": False,
+                "error": f"URL parsing failed: {str(e)}"
+            }
+
+    def _download_image_from_url(self, url: str, use_aria2c: bool = True, download_timeout: int = 30) -> Dict[str, Union[bool, str, bytes]]:
+        """Download image from URL and return detailed result."""
         try:
             if use_aria2c and self._is_aria2c_available():
-                return self._download_with_aria2c(url, download_timeout)
+                result = self._download_with_aria2c(url, download_timeout)
+                if result is not None:
+                    return {"success": True, "data": result, "error": ""}
+                else:
+                    return {"success": False, "data": None, "error": "aria2c download failed - check network connection and URL accessibility"}
             else:
-                return self._download_with_requests(url, download_timeout)
+                result = self._download_with_requests(url, download_timeout)
+                if result is not None:
+                    return {"success": True, "data": result, "error": ""}
+                else:
+                    return {"success": False, "data": None, "error": "HTTP download failed - check network connection, URL accessibility, and content type"}
                 
         except Exception as e:
-            logger.error(f"Failed to download image from {url}: {e}")
-            return None
+            return {
+                "success": False,
+                "data": None,
+                "error": f"Download exception: {str(e)}"
+            }
 
     def _download_with_aria2c(self, url: str, timeout: int = 30) -> Optional[bytes]:
         """Download image using aria2c for better performance."""
@@ -145,7 +214,7 @@ class APZmediaURLImageLoader:
                 
                 # Validate file size
                 if len(data) > self.MAX_FILE_SIZE:
-                    logger.warning(f"Downloaded file too large: {len(data)} bytes")
+                    logger.warning(f"Downloaded file too large: {len(data)} bytes (max: {self.MAX_FILE_SIZE})")
                     return None
                 
                 return data
@@ -154,7 +223,10 @@ class APZmediaURLImageLoader:
                 return None
                 
         except subprocess.CalledProcessError as e:
-            logger.error(f"aria2c download failed: {e.stderr}")
+            error_msg = f"aria2c command failed (exit code {e.returncode})"
+            if e.stderr:
+                error_msg += f": {e.stderr.strip()}"
+            logger.error(error_msg)
             return None
         except Exception as e:
             logger.error(f"aria2c download error: {e}")
@@ -168,14 +240,15 @@ class APZmediaURLImageLoader:
             
             # Check content type
             content_type = response.headers.get('content-type', '').lower()
-            if not any(img_type in content_type for img_type in ['image/', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/bmp', 'image/tiff']):
-                logger.warning(f"Invalid content type: {content_type}")
+            valid_image_types = ['image/', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/bmp', 'image/tiff']
+            if not any(img_type in content_type for img_type in valid_image_types):
+                logger.warning(f"Invalid content type: {content_type}. Expected image format.")
                 return None
             
             # Check content length
             content_length = response.headers.get('content-length')
             if content_length and int(content_length) > self.MAX_FILE_SIZE:
-                logger.warning(f"File too large: {content_length} bytes")
+                logger.warning(f"File too large: {content_length} bytes (max: {self.MAX_FILE_SIZE})")
                 return None
             
             # Download file
@@ -184,18 +257,88 @@ class APZmediaURLImageLoader:
                 if chunk:
                     data += chunk
                     if len(data) > self.MAX_FILE_SIZE:
-                        logger.warning("File exceeds size limit during download")
+                        logger.warning(f"File exceeds size limit during download: {len(data)} bytes (max: {self.MAX_FILE_SIZE})")
                         return None
             
             logger.info(f"Downloaded {len(data)} bytes from URL")
             return data
             
+        except requests.exceptions.Timeout:
+            logger.error(f"Request timeout after {timeout} seconds")
+            return None
+        except requests.exceptions.ConnectionError:
+            logger.error("Connection error - check network connectivity and URL accessibility")
+            return None
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"HTTP error {e.response.status_code}: {e}")
+            return None
         except requests.RequestException as e:
             logger.error(f"Requests download failed: {e}")
             return None
         except Exception as e:
             logger.error(f"Download error: {e}")
             return None
+
+    def _process_image_data_detailed(self, image_data: bytes, max_width: int, max_height: int, resize_mode: str) -> Dict[str, Union[bool, str, Tuple, List]]:
+        """Process downloaded image data into ComfyUI tensors with detailed information."""
+        try:
+            # Create image from bytes
+            image = Image.open(BytesIO(image_data))
+            original_size = (image.width, image.height)
+            
+            # Validate image dimensions
+            if image.width > self.MAX_IMAGE_DIMENSION or image.height > self.MAX_IMAGE_DIMENSION:
+                return {
+                    "success": False,
+                    "error": f"Image too large: {image.width}x{image.height} (max: {self.MAX_IMAGE_DIMENSION}x{self.MAX_IMAGE_DIMENSION})",
+                    "tensors": None,
+                    "original_size": original_size,
+                    "final_size": original_size,
+                    "resize_info": "Failed - image too large"
+                }
+            
+            # Convert to RGBA for consistent handling
+            image = image.convert("RGBA")
+            
+            # Resize if needed
+            resize_info = ""
+            if resize_mode != "none":
+                image, resize_info = self._resize_image_detailed(image, max_width, max_height, resize_mode)
+            else:
+                resize_info = "No resizing applied"
+            
+            final_size = (image.width, image.height)
+            
+            # Convert to ComfyUI tensor format
+            tensors = self._image_to_tensor(image)
+            if tensors[0] is None:
+                return {
+                    "success": False,
+                    "error": "Failed to convert image to tensor format",
+                    "tensors": None,
+                    "original_size": original_size,
+                    "final_size": final_size,
+                    "resize_info": resize_info
+                }
+            
+            return {
+                "success": True,
+                "error": "",
+                "tensors": tensors,
+                "original_size": original_size,
+                "final_size": final_size,
+                "resize_info": resize_info
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Image processing failed: {str(e)}",
+                "tensors": None,
+                "original_size": (0, 0),
+                "final_size": (0, 0),
+                "resize_info": "Failed - processing error"
+            }
 
     def _process_image_data(self, image_data: bytes, max_width: int, max_height: int, resize_mode: str) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
         """Process downloaded image data into ComfyUI tensors."""
@@ -221,6 +364,47 @@ class APZmediaURLImageLoader:
         except Exception as e:
             logger.error(f"Failed to process image data: {e}")
             return None, None
+
+    def _resize_image_detailed(self, image: Image.Image, max_width: int, max_height: int, resize_mode: str) -> Tuple[Image.Image, str]:
+        """Resize image based on specified mode with detailed information."""
+        try:
+            original_width, original_height = image.size
+            resize_info = ""
+            
+            if resize_mode == "fit":
+                # Fit image within bounds while preserving aspect ratio
+                ratio = min(max_width / original_width, max_height / original_height)
+                if ratio < 1:
+                    new_width = int(original_width * ratio)
+                    new_height = int(original_height * ratio)
+                    image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    resize_info = f"Scaled down by {ratio:.2f} to fit bounds"
+                else:
+                    resize_info = "No scaling needed - image fits within bounds"
+            
+            elif resize_mode == "crop":
+                # Crop image to exact dimensions
+                if original_width > max_width or original_height > max_height:
+                    # Calculate crop box to center the image
+                    left = max(0, (original_width - max_width) // 2)
+                    top = max(0, (original_height - max_height) // 2)
+                    right = min(original_width, left + max_width)
+                    bottom = min(original_height, top + max_height)
+                    image = image.crop((left, top, right, bottom))
+                    resize_info = f"Cropped from center to {max_width}x{max_height}"
+                else:
+                    resize_info = "No cropping needed - image smaller than target"
+            
+            elif resize_mode == "stretch":
+                # Stretch image to exact dimensions
+                image = image.resize((max_width, max_height), Image.Resampling.LANCZOS)
+                resize_info = f"Stretched to exact {max_width}x{max_height} (may distort aspect ratio)"
+            
+            return image, resize_info
+            
+        except Exception as e:
+            logger.error(f"Failed to resize image: {e}")
+            return image, f"Resize failed: {str(e)}"
 
     def _resize_image(self, image: Image.Image, max_width: int, max_height: int, resize_mode: str) -> Image.Image:
         """Resize image based on specified mode."""
@@ -275,7 +459,7 @@ class APZmediaURLImageLoader:
             
         except Exception as e:
             logger.error(f"Failed to convert image to tensor: {e}")
-            return None, None
+            return self._create_empty_image(), self._create_empty_mask()
 
     def _is_valid_url(self, url: str) -> bool:
         """Validate URL format and security."""
@@ -317,11 +501,17 @@ class APZmediaURLImageLoader:
         except (subprocess.CalledProcessError, FileNotFoundError):
             return False
 
+    def _create_empty_image(self) -> torch.Tensor:
+        """Create an empty image tensor in (1, H, W, 3) format."""
+        return torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+
+    def _create_empty_mask(self) -> torch.Tensor:
+        """Create an empty mask tensor in (1, H, W) format."""
+        return torch.zeros((1, 64, 64), dtype=torch.float32)
+
     def _return_empty(self, status_message: str) -> Tuple[torch.Tensor, torch.Tensor, str]:
         """Return empty tensors with status message."""
-        empty_image = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
-        empty_mask = torch.zeros((1, 64, 64), dtype=torch.float32)
-        return (empty_image, empty_mask, status_message)
+        return (self._create_empty_image(), self._create_empty_mask(), status_message)
 
 NODE_CLASS_MAPPINGS = {
     "APZmediaURLImageLoader": APZmediaURLImageLoader,
