@@ -9,12 +9,14 @@ setup(
         "torch>=1.9.0",
         "pillow>=8.0.0",
         "numpy>=1.19.0",
+        "requests>=2.25.0",
     ],
     entry_points={
         'comfyui.nodes': [
             'brand_asset_loader = nodes.brand_asset_loader:APZmediaBrandAssetLoader',
             'logo_placement_node = nodes.logo_placement_node:APZmediaLogoPlacement',
             'logo_overlay_node = nodes.logo_overlay_node:APZmediaLogoOverlay',
+            'url_image_loader = nodes.url_image_loader:APZmediaURLImageLoader',
         ],
     },
     author="Pablo Apiolazza",
