@@ -1,30 +1,26 @@
-# Import node modules
-from .nodes import brand_asset_loader
-from .nodes import logo_placement_node
-from .nodes import logo_overlay_node
-from .nodes import solid_color_node
-from .nodes import gradient_overlay_node
-from .nodes import color_palette_node
-from .nodes import global_brand_access
-from .nodes import url_image_loader
+import importlib
+import pkgutil
+import traceback
+from pathlib import Path
 
-# Combine all node mappings
 NODE_CLASS_MAPPINGS = {}
-NODE_CLASS_MAPPINGS.update(brand_asset_loader.NODE_CLASS_MAPPINGS)
-NODE_CLASS_MAPPINGS.update(logo_placement_node.NODE_CLASS_MAPPINGS)
-NODE_CLASS_MAPPINGS.update(logo_overlay_node.NODE_CLASS_MAPPINGS)
-NODE_CLASS_MAPPINGS.update(solid_color_node.NODE_CLASS_MAPPINGS)
-NODE_CLASS_MAPPINGS.update(gradient_overlay_node.NODE_CLASS_MAPPINGS)
-NODE_CLASS_MAPPINGS.update(color_palette_node.NODE_CLASS_MAPPINGS)
-NODE_CLASS_MAPPINGS.update(global_brand_access.NODE_CLASS_MAPPINGS)
-NODE_CLASS_MAPPINGS.update(url_image_loader.NODE_CLASS_MAPPINGS)
-
 NODE_DISPLAY_NAME_MAPPINGS = {}
-NODE_DISPLAY_NAME_MAPPINGS.update(brand_asset_loader.NODE_DISPLAY_NAME_MAPPINGS)
-NODE_DISPLAY_NAME_MAPPINGS.update(logo_placement_node.NODE_DISPLAY_NAME_MAPPINGS)
-NODE_DISPLAY_NAME_MAPPINGS.update(logo_overlay_node.NODE_DISPLAY_NAME_MAPPINGS)
-NODE_DISPLAY_NAME_MAPPINGS.update(solid_color_node.NODE_DISPLAY_NAME_MAPPINGS)
-NODE_DISPLAY_NAME_MAPPINGS.update(gradient_overlay_node.NODE_DISPLAY_NAME_MAPPINGS)
-NODE_DISPLAY_NAME_MAPPINGS.update(color_palette_node.NODE_DISPLAY_NAME_MAPPINGS)
-NODE_DISPLAY_NAME_MAPPINGS.update(global_brand_access.NODE_DISPLAY_NAME_MAPPINGS)
-NODE_DISPLAY_NAME_MAPPINGS.update(url_image_loader.NODE_DISPLAY_NAME_MAPPINGS)
+
+package_dir = Path(__file__).parent.resolve()
+nodes_dir = package_dir / "nodes"
+
+# Dynamically import all node modules
+for _, module_name, _ in pkgutil.iter_modules([str(nodes_dir)]):
+    try:
+        module = importlib.import_module(f".nodes.{module_name}", package=__name__)
+        if hasattr(module, "NODE_CLASS_MAPPINGS") and hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS"):
+            NODE_CLASS_MAPPINGS.update(module.NODE_CLASS_MAPPINGS)
+            NODE_DISPLAY_NAME_MAPPINGS.update(module.NODE_DISPLAY_NAME_MAPPINGS)
+            print(f"[APZmedia] Successfully loaded node module: {module_name}")
+        else:
+            print(f"[APZmedia] Module {module_name} is missing required mappings")
+    except Exception as e:
+        print(f"[APZmedia] ERROR Failed to load node module {module_name}:")
+        traceback.print_exc()
+
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
