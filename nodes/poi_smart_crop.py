@@ -266,8 +266,6 @@ class POISmartCrop:
                 "images": ("IMAGE",),
                 "width": ("INT", {"default": 1080, "min": 1, "max": 8192}),
                 "height": ("INT", {"default": 1350, "min": 1, "max": 8192}),
-            },
-            "optional": {
                 "interpolation": (["lanczos", "bicubic", "bilinear", "nearest"], {"default": "lanczos"}),
                 "method": (["fill / crop", "fit"], {"default": "fill / crop"}),
                 "condition": (["always", "if_larger", "if_smaller"], {"default": "always"}),
@@ -277,8 +275,8 @@ class POISmartCrop:
                 "saliency_lower_pct": ("FLOAT", {"default": 0.05, "min": 0.0, "max": 0.5, "step": 0.01}),
                 "saliency_upper_pct": ("FLOAT", {"default": 0.95, "min": 0.5, "max": 1.0, "step": 0.01}),
                 "refine_with_grabcut": ("BOOL", {"default": False}),
-                "fallback_center_crop": ("BOOL", {"default": True}),
-                "show_overlay": ("BOOL", {"default": False}),
+                "fallback_center_crop": (["enabled", "disabled"], {"default": "enabled"}),
+                "show_overlay": (["enabled", "disabled"], {"default": "disabled"}),
             }
         }
 
@@ -301,8 +299,8 @@ class POISmartCrop:
         saliency_lower_pct: float = 0.05,
         saliency_upper_pct: float = 0.95,
         refine_with_grabcut: bool = False,
-        fallback_center_crop: bool = True,
-        show_overlay: bool = False,
+        fallback_center_crop: str = "enabled",
+        show_overlay: str = "disabled",
     ):
         """
         images: torch tensor [B,H,W,C], 0..1
@@ -311,6 +309,10 @@ class POISmartCrop:
         assert images.dim() == 4, "Expected [B,H,W,C] tensor"
         B, H, W, C = images.shape
         target_aspect = max(1e-6, float(width) / float(height))
+        
+        # Convert string options to boolean values
+        fallback_center_crop_bool = fallback_center_crop == "enabled"
+        show_overlay_bool = show_overlay == "enabled"
 
         # Apply multiple_of constraint if specified
         if multiple_of > 0:
@@ -366,7 +368,7 @@ class POISmartCrop:
             )
 
             # if saliency is too flat, optionally fallback to center crop
-            if float(S.sum()) < 1e-6 and fallback_center_crop:
+            if float(S.sum()) < 1e-6 and fallback_center_crop_bool:
                 # center box with aspect
                 if w / h < target_aspect:
                     # image narrower than target -> height drives
@@ -394,7 +396,7 @@ class POISmartCrop:
             crop = np_img[y0:y1, x0:x1, :]
             
             # Apply debug overlay if enabled
-            if show_overlay:
+            if show_overlay_bool:
                 # Draw overlay on the original image to show POI detection
                 debug_img = _draw_poi_overlay(np_img, x0, y0, x1, y1, color=(255, 0, 0), thickness=3)
                 # Also draw on the crop to show the final result
