@@ -274,7 +274,9 @@ class POISmartCrop:
                 "padding": ("FLOAT", {"default": 0.12, "min": 0.0, "max": 0.75, "step": 0.01}),
                 "saliency_lower_pct": ("FLOAT", {"default": 0.05, "min": 0.0, "max": 0.5, "step": 0.01}),
                 "saliency_upper_pct": ("FLOAT", {"default": 0.95, "min": 0.5, "max": 1.0, "step": 0.01}),
-                "refine_with_grabcut": ("BOOL", {"default": False}),
+            },
+            "optional": {
+                "refine_with_grabcut": (["enabled", "disabled"], {"default": "disabled"}),
                 "fallback_center_crop": (["enabled", "disabled"], {"default": "enabled"}),
                 "show_overlay": (["enabled", "disabled"], {"default": "disabled"}),
             }
@@ -298,7 +300,7 @@ class POISmartCrop:
         padding: float = 0.12,
         saliency_lower_pct: float = 0.05,
         saliency_upper_pct: float = 0.95,
-        refine_with_grabcut: bool = False,
+        refine_with_grabcut: str = "disabled",
         fallback_center_crop: str = "enabled",
         show_overlay: str = "disabled",
     ):
@@ -311,6 +313,7 @@ class POISmartCrop:
         target_aspect = max(1e-6, float(width) / float(height))
         
         # Convert string options to boolean values
+        refine_with_grabcut_bool = refine_with_grabcut == "enabled"
         fallback_center_crop_bool = fallback_center_crop == "enabled"
         show_overlay_bool = show_overlay == "enabled"
 
@@ -351,7 +354,7 @@ class POISmartCrop:
             S = spectral_residual_saliency(gray)
 
             # optional GrabCut refinement
-            if refine_with_grabcut and _HAS_CV2:
+            if refine_with_grabcut_bool and _HAS_CV2:
                 x0_s, y0_s, x1_s, y1_s = _compute_median_box_from_saliency(
                     S, (saliency_lower_pct, saliency_upper_pct)
                 )
