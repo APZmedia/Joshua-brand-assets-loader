@@ -223,6 +223,37 @@ def _apply_centering_preference(x0, y0, x1, y1, W, H, target_w, target_h, center
     return new_x0, new_y0, new_x1, new_y1
 
 
+def _draw_poi_overlay(img: np.ndarray, x0: int, y0: int, x1: int, y1: int, color=(255, 0, 0), thickness=2):
+    """
+    Draw a rectangle overlay on the image to show the POI detection box.
+    Returns a copy of the image with the overlay drawn.
+    """
+    overlay_img = img.copy()
+    h, w = overlay_img.shape[:2]
+    
+    # Ensure coordinates are within bounds
+    x0 = max(0, min(x0, w-1))
+    y0 = max(0, min(y0, h-1))
+    x1 = max(x0+1, min(x1, w))
+    y1 = max(y0+1, min(y1, h))
+    
+    # Draw rectangle outline
+    if len(overlay_img.shape) == 3:
+        # RGB image
+        overlay_img[y0:y0+thickness, x0:x1] = color  # Top edge
+        overlay_img[y1-thickness:y1, x0:x1] = color  # Bottom edge
+        overlay_img[y0:y1, x0:x0+thickness] = color  # Left edge
+        overlay_img[y0:y1, x1-thickness:x1] = color  # Right edge
+    else:
+        # Grayscale image
+        overlay_img[y0:y0+thickness, x0:x1] = 255  # Top edge
+        overlay_img[y1-thickness:y1, x0:x1] = 255  # Bottom edge
+        overlay_img[y0:y1, x0:x0+thickness] = 255  # Left edge
+        overlay_img[y0:y1, x1-thickness:x1] = 255  # Right edge
+    
+    return overlay_img
+
+
 class POISmartCrop:
     """
     ComfyUI node: lightweight smart crop keeping point-of-interest in frame.
@@ -247,6 +278,7 @@ class POISmartCrop:
                 "saliency_upper_pct": ("FLOAT", {"default": 0.95, "min": 0.5, "max": 1.0, "step": 0.01}),
                 "refine_with_grabcut": ("BOOL", {"default": False}),
                 "fallback_center_crop": ("BOOL", {"default": True}),
+                "show_overlay": ("BOOL", {"default": False}),
             }
         }
 
@@ -270,6 +302,7 @@ class POISmartCrop:
         saliency_upper_pct: float = 0.95,
         refine_with_grabcut: bool = False,
         fallback_center_crop: bool = True,
+        show_overlay: bool = False,
     ):
         """
         images: torch tensor [B,H,W,C], 0..1
@@ -359,6 +392,13 @@ class POISmartCrop:
 
             # crop
             crop = np_img[y0:y1, x0:x1, :]
+            
+            # Apply debug overlay if enabled
+            if show_overlay:
+                # Draw overlay on the original image to show POI detection
+                debug_img = _draw_poi_overlay(np_img, x0, y0, x1, y1, color=(255, 0, 0), thickness=3)
+                # Also draw on the crop to show the final result
+                crop = _draw_poi_overlay(crop, 0, 0, crop.shape[1], crop.shape[0], color=(0, 255, 0), thickness=2)
 
             # Apply resize method - always maintain aspect ratio
             crop_h, crop_w = crop.shape[:2]
