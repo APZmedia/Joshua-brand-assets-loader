@@ -6,6 +6,7 @@ from .nodes import solid_color_node
 from .nodes import gradient_overlay_node
 from .nodes import color_palette_node
 from .nodes import global_brand_access
+from .nodes import poi_smart_crop
 
 # Combine all node mappings
 NODE_CLASS_MAPPINGS = {}
@@ -16,6 +17,7 @@ NODE_CLASS_MAPPINGS.update(solid_color_node.NODE_CLASS_MAPPINGS)
 NODE_CLASS_MAPPINGS.update(gradient_overlay_node.NODE_CLASS_MAPPINGS)
 NODE_CLASS_MAPPINGS.update(color_palette_node.NODE_CLASS_MAPPINGS)
 NODE_CLASS_MAPPINGS.update(global_brand_access.NODE_CLASS_MAPPINGS)
+NODE_CLASS_MAPPINGS.update(poi_smart_crop.NODE_CLASS_MAPPINGS)
 
 NODE_DISPLAY_NAME_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS.update(brand_asset_loader.NODE_DISPLAY_NAME_MAPPINGS)
@@ -25,3 +27,4 @@ NODE_DISPLAY_NAME_MAPPINGS.update(solid_color_node.NODE_DISPLAY_NAME_MAPPINGS)
 NODE_DISPLAY_NAME_MAPPINGS.update(gradient_overlay_node.NODE_DISPLAY_NAME_MAPPINGS)
 NODE_DISPLAY_NAME_MAPPINGS.update(color_palette_node.NODE_DISPLAY_NAME_MAPPINGS)
 NODE_DISPLAY_NAME_MAPPINGS.update(global_brand_access.NODE_DISPLAY_NAME_MAPPINGS)
+NODE_DISPLAY_NAME_MAPPINGS.update(poi_smart_crop.NODE_DISPLAY_NAME_MAPPINGS)

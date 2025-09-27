@@ -54,10 +54,6 @@ class APZmediaBrandAssetLoader:
                 "api_base_url": ("STRING", {"default": "https://api.example.com", "multiline": False}),
                 "api_token": ("STRING", {"default": "", "multiline": False}),
                 
-                # Download Configuration
-                "use_aria2c": ("BOOLEAN", {"default": True}),
-                "download_timeout": ("INT", {"default": 30, "min": 10, "max": 300}),
-                
                 # Logo Assets
                 "logo_vertical_color": ("STRING", {"default": "", "multiline": False}),
                 "logo_vertical_mono": ("STRING", {"default": "", "multiline": False}),
@@ -103,7 +99,6 @@ class APZmediaBrandAssetLoader:
     CATEGORY = "apzmedia_brand"
 
     def load_brand_assets(self, load_method, api_brand_id="", api_base_url="", api_token="", 
-                         use_aria2c=True, download_timeout=30,
                          logo_vertical_color="", logo_vertical_mono="", 
                          logo_horizontal_color="", logo_horizontal_mono="", 
                          logo_icon="", font_primary="", font_primary_bold="", font_primary_italic="",
