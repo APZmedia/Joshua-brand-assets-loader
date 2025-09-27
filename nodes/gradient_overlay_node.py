@@ -15,20 +15,19 @@ class APZmediaGradientOverlay:
         return {
             "required": {
                 "background_image": ("IMAGE", {}),
-                "hex_color": ("STRING", {"default": "#000000", "multiline": False}),
+                "hex_color": ("STRING", {"default": "#0066CC", "multiline": False}),
                 "gradient_type": (["linear", "radial", "conical"], {"default": "linear"}),
-                "orientation": (["horizontal", "vertical", "diagonal_tl_br", "diagonal_tr_bl"], {"default": "horizontal"}),
-                "start_position": (["top", "center", "bottom", "left", "right", "top-left", "top-right", "bottom-left", "bottom-right"], {"default": "left"}),
-                "end_position": (["top", "center", "bottom", "left", "right", "top-left", "top-right", "bottom-left", "bottom-right"], {"default": "right"}),
-                "start_alpha": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "end_alpha": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "orientation": (["horizontal", "vertical"], {"default": "horizontal"}),
+                "start_position": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "end_position": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "start_opacity": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "end_opacity": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
             "optional": {
                 "blend_mode": (["normal", "multiply", "screen", "overlay", "soft_light", "hard_light"], {"default": "normal"}),
-                "opacity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "gradient_center_x": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "gradient_center_y": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "gradient_radius": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 2.0, "step": 0.01}),
+                "gradient_radius": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 2.0, "step": 0.01}),
             }
         }
 
@@ -39,9 +38,9 @@ class APZmediaGradientOverlay:
     CATEGORY = "apzmedia_brand"
 
     def create_gradient_overlay(self, background_image, hex_color, gradient_type, orientation, 
-                               start_position, end_position, start_alpha, end_alpha, 
-                               blend_mode="normal", opacity=1.0, gradient_center_x=0.5, 
-                               gradient_center_y=0.5, gradient_radius=0.5):
+                               start_position, end_position, start_opacity, end_opacity, 
+                               blend_mode="normal", gradient_center_x=0.5, gradient_center_y=0.5, 
+                               gradient_radius=0.5):
         """
         Create a gradient overlay on the background image.
         
@@ -49,13 +48,12 @@ class APZmediaGradientOverlay:
             background_image: Background image tensor (C, H, W) format with RGB channels
             hex_color: Hex color string for the gradient
             gradient_type: Type of gradient (linear, radial, conical)
-            orientation: Orientation for linear gradients
-            start_position: Starting position for gradient
-            end_position: Ending position for gradient
-            start_alpha: Starting alpha value (0.0 to 1.0)
-            end_alpha: Ending alpha value (0.0 to 1.0)
-            blend_mode: Blending mode for overlay
-            opacity: Overall opacity of the gradient
+            orientation: Orientation for linear gradients ("horizontal" or "vertical")
+            start_position: Starting position for gradient (0.0 to 1.0)
+            end_position: Ending position for gradient (0.0 to 1.0)
+            start_opacity: Starting opacity value (0.0 = transparent, 1.0 = opaque)
+            end_opacity: Ending opacity value (0.0 = transparent, 1.0 = opaque)
+            blend_mode: Blending mode for overlay (normal, multiply, screen, overlay, soft_light, hard_light)
             gradient_center_x: Center X position for radial/conical gradients (0.0 to 1.0)
             gradient_center_y: Center Y position for radial/conical gradients (0.0 to 1.0)
             gradient_radius: Radius for radial gradients (0.0 to 2.0)
@@ -83,10 +81,10 @@ class APZmediaGradientOverlay:
             r, g, b = rgb_values
             logger.info(f"[create_gradient_overlay] hex_color={hex_color}, rgb=({r},{g},{b})")
 
-            # Create gradient mask
+            # Create gradient mask with opacity interpolation
             gradient_mask = self._create_gradient_mask(
                 background_image, gradient_type, orientation, start_position, end_position,
-                start_alpha, end_alpha, gradient_center_x, gradient_center_y, gradient_radius
+                start_opacity, end_opacity, gradient_center_x, gradient_center_y, gradient_radius
             )
             
             logger.info(f"[create_gradient_overlay] gradient_mask: shape={gradient_mask.shape}, min={gradient_mask.min().item():.3f}, max={gradient_mask.max().item():.3f}")
@@ -95,14 +93,9 @@ class APZmediaGradientOverlay:
             color_tensor = self._create_color_tensor(background_image, r, g, b)
             logger.info(f"[create_gradient_overlay] color_tensor: shape={color_tensor.shape}")
 
-            # Apply gradient mask to color
+            # Apply gradient mask to color (opacity is already included in the mask)
             gradient_overlay = color_tensor * gradient_mask.unsqueeze(0)  # Add channel dimension
             logger.info(f"[create_gradient_overlay] gradient_overlay: shape={gradient_overlay.shape}")
-
-            # Apply overall opacity
-            if opacity < 1.0:
-                gradient_overlay = gradient_overlay * opacity
-                logger.info(f"[create_gradient_overlay] after opacity: min={gradient_overlay.min().item():.3f}, max={gradient_overlay.max().item():.3f}")
 
             # Blend with background
             result = self._blend_gradient(background_image, gradient_overlay, gradient_mask, blend_mode)
@@ -216,28 +209,29 @@ class APZmediaGradientOverlay:
             return None
 
     def _create_gradient_mask(self, background_image, gradient_type, orientation, start_position, 
-                             end_position, start_alpha, end_alpha, gradient_center_x, 
+                             end_position, start_opacity, end_opacity, gradient_center_x, 
                              gradient_center_y, gradient_radius):
         """
         Create gradient mask based on type and parameters.
         
         Returns:
-            Gradient mask tensor in (H, W) format with values from start_alpha to end_alpha
+            Gradient mask tensor in (H, W) format with opacity values
         """
         try:
             height, width = background_image.shape[1], background_image.shape[2]
             
+            # Create gradient mask based on type
             if gradient_type == "linear":
                 return self._create_linear_gradient_mask(
-                    height, width, orientation, start_position, end_position, start_alpha, end_alpha
+                    height, width, orientation, start_position, end_position, start_opacity, end_opacity
                 )
             elif gradient_type == "radial":
                 return self._create_radial_gradient_mask(
-                    height, width, gradient_center_x, gradient_center_y, gradient_radius, start_alpha, end_alpha
+                    height, width, gradient_center_x, gradient_center_y, gradient_radius, start_opacity, end_opacity
                 )
             elif gradient_type == "conical":
                 return self._create_conical_gradient_mask(
-                    height, width, gradient_center_x, gradient_center_y, start_alpha, end_alpha
+                    height, width, gradient_center_x, gradient_center_y, start_opacity, end_opacity
                 )
             else:
                 logger.error(f"Unknown gradient type: {gradient_type}")
@@ -248,8 +242,8 @@ class APZmediaGradientOverlay:
             return torch.zeros(background_image.shape[1], background_image.shape[2], dtype=torch.float32)
 
     def _create_linear_gradient_mask(self, height, width, orientation, start_position, 
-                                   end_position, start_alpha, end_alpha):
-        """Create linear gradient mask."""
+                                   end_position, start_opacity, end_opacity):
+        """Create linear gradient mask with start/end positions controlling where gradient begins/ends."""
         try:
             # Create coordinate grids
             y_coords, x_coords = torch.meshgrid(
@@ -267,19 +261,66 @@ class APZmediaGradientOverlay:
                 gradient = x_norm
             elif orientation == "vertical":
                 gradient = y_norm
-            elif orientation == "diagonal_tl_br":
-                gradient = (x_norm + y_norm) / 2
-            elif orientation == "diagonal_tr_bl":
-                gradient = (1 - x_norm + y_norm) / 2
             else:
                 gradient = x_norm  # Default to horizontal
             
-            # Apply start/end positions if specified
-            if start_position != "left" or end_position != "right":
-                gradient = self._adjust_gradient_positions(gradient, start_position, end_position)
+            # Apply start/end positions - these control WHERE the gradient begins and ends
+            # start_position = where gradient starts (0.0 = left/top, 1.0 = right/bottom)
+            # end_position = where gradient ends (0.0 = left/top, 1.0 = right/bottom)
             
-            # Interpolate between start_alpha and end_alpha
-            mask = start_alpha + (end_alpha - start_alpha) * gradient
+            # Create mask based on position ranges
+            if end_position > start_position:
+                # Normal case: gradient from start_position to end_position
+                # Before start_position: use start_opacity
+                # Between start and end: interpolate from start_opacity to end_opacity
+                # After end_position: use end_opacity
+                
+                # Create position-based mask
+                before_start = gradient < start_position
+                between_start_end = (gradient >= start_position) & (gradient <= end_position)
+                after_end = gradient > end_position
+                
+                # Initialize mask
+                mask = torch.zeros_like(gradient)
+                
+                # Before start: use start_opacity
+                mask[before_start] = start_opacity
+                
+                # After end: use end_opacity
+                mask[after_end] = end_opacity
+                
+                # Between start and end: interpolate
+                if torch.any(between_start_end):
+                    # Normalize gradient values between start and end to 0-1
+                    normalized_gradient = (gradient[between_start_end] - start_position) / (end_position - start_position)
+                    # Interpolate opacity
+                    mask[between_start_end] = start_opacity + (end_opacity - start_opacity) * normalized_gradient
+                    
+            elif end_position < start_position:
+                # Reversed case: gradient from end_position to start_position
+                before_end = gradient < end_position
+                between_end_start = (gradient >= end_position) & (gradient <= start_position)
+                after_start = gradient > start_position
+                
+                # Initialize mask
+                mask = torch.zeros_like(gradient)
+                
+                # Before end: use end_opacity
+                mask[before_end] = end_opacity
+                
+                # After start: use start_opacity
+                mask[after_start] = start_opacity
+                
+                # Between end and start: interpolate
+                if torch.any(between_end_start):
+                    # Normalize gradient values between end and start to 0-1
+                    normalized_gradient = (gradient[between_end_start] - end_position) / (start_position - end_position)
+                    # Interpolate opacity (reversed direction)
+                    mask[between_end_start] = end_opacity + (start_opacity - end_opacity) * normalized_gradient
+                    
+            else:
+                # Same position: solid color
+                mask = torch.full_like(gradient, start_opacity)
             
             return mask
             
@@ -287,7 +328,7 @@ class APZmediaGradientOverlay:
             logger.error(f"Failed to create linear gradient mask: {str(e)}")
             return torch.zeros(height, width, dtype=torch.float32)
 
-    def _create_radial_gradient_mask(self, height, width, center_x, center_y, radius, start_alpha, end_alpha):
+    def _create_radial_gradient_mask(self, height, width, center_x, center_y, radius, start_opacity, end_opacity):
         """Create radial gradient mask."""
         try:
             # Create coordinate grids
@@ -317,8 +358,8 @@ class APZmediaGradientOverlay:
             # Invert so center is 1, edges are 0
             gradient = 1 - normalized_distance
             
-            # Interpolate between start_alpha and end_alpha
-            mask = start_alpha + (end_alpha - start_alpha) * gradient
+            # Interpolate between start_opacity and end_opacity
+            mask = start_opacity + (end_opacity - start_opacity) * gradient
             
             return mask
             
@@ -326,7 +367,7 @@ class APZmediaGradientOverlay:
             logger.error(f"Failed to create radial gradient mask: {str(e)}")
             return torch.zeros(height, width, dtype=torch.float32)
 
-    def _create_conical_gradient_mask(self, height, width, center_x, center_y, start_alpha, end_alpha):
+    def _create_conical_gradient_mask(self, height, width, center_x, center_y, start_opacity, end_opacity):
         """Create conical gradient mask."""
         try:
             # Create coordinate grids
@@ -348,8 +389,8 @@ class APZmediaGradientOverlay:
             # Convert angle to 0-1 range
             gradient = (angle + torch.pi) / (2 * torch.pi)
             
-            # Interpolate between start_alpha and end_alpha
-            mask = start_alpha + (end_alpha - start_alpha) * gradient
+            # Interpolate between start_opacity and end_opacity
+            mask = start_opacity + (end_opacity - start_opacity) * gradient
             
             return mask
             
@@ -357,34 +398,6 @@ class APZmediaGradientOverlay:
             logger.error(f"Failed to create conical gradient mask: {str(e)}")
             return torch.zeros(height, width, dtype=torch.float32)
 
-    def _adjust_gradient_positions(self, gradient, start_position, end_position):
-        """Adjust gradient based on start and end positions."""
-        try:
-            # Map position names to normalized values
-            position_map = {
-                "top": 0.0, "left": 0.0,
-                "center": 0.5,
-                "bottom": 1.0, "right": 1.0,
-                "top-left": 0.0, "bottom-right": 1.0,
-                "top-right": 0.5, "bottom-left": 0.5
-            }
-            
-            start_val = position_map.get(start_position, 0.0)
-            end_val = position_map.get(end_position, 1.0)
-            
-            # Adjust gradient range
-            if end_val > start_val:
-                adjusted = (gradient - start_val) / (end_val - start_val)
-                adjusted = torch.clamp(adjusted, 0, 1)
-            else:
-                adjusted = 1 - (gradient - end_val) / (start_val - end_val)
-                adjusted = torch.clamp(adjusted, 0, 1)
-            
-            return adjusted
-            
-        except Exception as e:
-            logger.error(f"Failed to adjust gradient positions: {str(e)}")
-            return gradient
 
     def _create_color_tensor(self, background_image, r, g, b):
         """Create solid color tensor matching background dimensions."""
@@ -409,44 +422,49 @@ class APZmediaGradientOverlay:
             return torch.zeros(3, background_image.shape[1], background_image.shape[2], dtype=torch.float32)
 
     def _blend_gradient(self, background_image, gradient_overlay, gradient_mask, blend_mode):
-        """Blend gradient overlay with background image."""
+        """Blend gradient overlay with background image using correct mathematical formulas."""
         try:
+            # Apply gradient mask to the overlay first
+            alpha = gradient_mask.unsqueeze(0)  # Add channel dimension (1, H, W)
+            masked_overlay = gradient_overlay * alpha
+            
             if blend_mode == "normal":
-                # Simple alpha blending
-                alpha = gradient_mask.unsqueeze(0)  # Add channel dimension
-                result = background_image * (1 - alpha) + gradient_overlay * alpha
+                # Simple alpha blending: result = base * (1 - alpha) + overlay * alpha
+                result = background_image * (1 - alpha) + masked_overlay
             elif blend_mode == "multiply":
-                result = background_image * gradient_overlay
+                # Multiply: result = base * overlay
+                result = background_image * masked_overlay
             elif blend_mode == "screen":
-                result = 1 - (1 - background_image) * (1 - gradient_overlay)
+                # Screen: result = 1 - (1 - base) * (1 - overlay)
+                result = 1 - (1 - background_image) * (1 - masked_overlay)
             elif blend_mode == "overlay":
-                # Overlay blend mode
-                mask = gradient_mask.unsqueeze(0)
+                # Overlay: if base < 0.5: 2 * base * overlay, else: 1 - 2 * (1 - base) * (1 - overlay)
                 result = torch.where(
                     background_image < 0.5,
-                    2 * background_image * gradient_overlay,
-                    1 - 2 * (1 - background_image) * (1 - gradient_overlay)
+                    2 * background_image * masked_overlay,
+                    1 - 2 * (1 - background_image) * (1 - masked_overlay)
                 )
             elif blend_mode == "soft_light":
-                # Soft light blend mode
-                mask = gradient_mask.unsqueeze(0)
+                # Soft light: if overlay < 0.5: base - (1 - 2 * overlay) * base * (1 - base)
+                # else: base + (2 * overlay - 1) * (sqrt(base) - base)
                 result = torch.where(
-                    gradient_overlay < 0.5,
-                    background_image * (2 * gradient_overlay),
-                    background_image * (1 - 2 * (1 - gradient_overlay))
+                    masked_overlay < 0.5,
+                    background_image - (1 - 2 * masked_overlay) * background_image * (1 - background_image),
+                    background_image + (2 * masked_overlay - 1) * (torch.sqrt(background_image) - background_image)
                 )
             elif blend_mode == "hard_light":
-                # Hard light blend mode
-                mask = gradient_mask.unsqueeze(0)
+                # Hard light: if overlay < 0.5: 2 * base * overlay, else: 1 - 2 * (1 - base) * (1 - overlay)
                 result = torch.where(
-                    gradient_overlay < 0.5,
-                    2 * background_image * gradient_overlay,
-                    1 - 2 * (1 - background_image) * (1 - gradient_overlay)
+                    masked_overlay < 0.5,
+                    2 * background_image * masked_overlay,
+                    1 - 2 * (1 - background_image) * (1 - masked_overlay)
                 )
             else:
                 # Default to normal blending
-                alpha = gradient_mask.unsqueeze(0)
-                result = background_image * (1 - alpha) + gradient_overlay * alpha
+                result = background_image * (1 - alpha) + masked_overlay
+            
+            # Clamp values to valid range [0, 1]
+            result = torch.clamp(result, 0, 1)
             
             return result
             
