@@ -449,5 +449,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "POISmartCrop": "POI Smart Crop (Lightweight)",
+    "POISmartCrop": "POI Smart Crop (Enhanced)",
 }
