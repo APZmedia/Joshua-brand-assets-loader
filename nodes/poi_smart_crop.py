@@ -185,6 +185,44 @@ def _resize_np(img: np.ndarray, out_w: int, out_h: int, allow_upscale=False, int
     return np.array(pil)
 
 
+def _apply_centering_preference(x0, y0, x1, y1, W, H, target_w, target_h, centering_preference):
+    """
+    Apply centering preference to the crop box.
+    Returns adjusted coordinates [x0,y0,x1,y1).
+    """
+    # Calculate current center
+    current_cx = (x0 + x1) / 2
+    current_cy = (y0 + y1) / 2
+    
+    # Calculate target center based on preference
+    if centering_preference == "left":
+        target_cx = target_w / 2  # Left side of image
+    elif centering_preference == "right":
+        target_cx = W - target_w / 2  # Right side of image
+    else:  # center
+        target_cx = W / 2  # Center of image
+    
+    target_cy = H / 2  # Always center vertically
+    
+    # Calculate offset needed
+    offset_x = target_cx - current_cx
+    offset_y = target_cy - current_cy
+    
+    # Apply offset
+    new_x0 = max(0, int(x0 + offset_x))
+    new_y0 = max(0, int(y0 + offset_y))
+    new_x1 = min(W, int(x1 + offset_x))
+    new_y1 = min(H, int(y1 + offset_y))
+    
+    # Ensure minimum size
+    if new_x1 - new_x0 < 1:
+        new_x1 = min(W, new_x0 + 1)
+    if new_y1 - new_y0 < 1:
+        new_y1 = min(H, new_y0 + 1)
+    
+    return new_x0, new_y0, new_x1, new_y1
+
+
 class POISmartCrop:
     """
     ComfyUI node: lightweight smart crop keeping point-of-interest in frame.
@@ -195,18 +233,19 @@ class POISmartCrop:
         return {
             "required": {
                 "images": ("IMAGE",),
-                "target_aspect_w": ("INT", {"default": 1, "min": 1, "max": 8192}),
-                "target_aspect_h": ("INT", {"default": 1, "min": 1, "max": 8192}),
+                "width": ("INT", {"default": 1080, "min": 1, "max": 8192}),
+                "height": ("INT", {"default": 1350, "min": 1, "max": 8192}),
             },
             "optional": {
+                "interpolation": (["lanczos", "bicubic", "bilinear", "nearest"], {"default": "lanczos"}),
+                "method": (["fill / crop", "fit"], {"default": "fill / crop"}),
+                "condition": (["always", "if_larger", "if_smaller"], {"default": "always"}),
+                "multiple_of": ("INT", {"default": 0, "min": 0, "max": 64}),
+                "centering_preference": (["left", "center", "right"], {"default": "center"}),
                 "padding": ("FLOAT", {"default": 0.12, "min": 0.0, "max": 0.75, "step": 0.01}),
                 "saliency_lower_pct": ("FLOAT", {"default": 0.05, "min": 0.0, "max": 0.5, "step": 0.01}),
                 "saliency_upper_pct": ("FLOAT", {"default": 0.95, "min": 0.5, "max": 1.0, "step": 0.01}),
                 "refine_with_grabcut": ("BOOL", {"default": False}),
-                "out_width": ("INT", {"default": 0, "min": 0, "max": 8192}),
-                "out_height": ("INT", {"default": 0, "min": 0, "max": 8192}),
-                "allow_upscale": ("BOOL", {"default": False}),
-                "resize_interpolation": (["lanczos", "bicubic", "bilinear", "nearest"], {"default": "lanczos"}),
                 "fallback_center_crop": ("BOOL", {"default": True}),
             }
         }
@@ -219,16 +258,17 @@ class POISmartCrop:
     def run(
         self,
         images: torch.Tensor,
-        target_aspect_w: int,
-        target_aspect_h: int,
+        width: int,
+        height: int,
+        interpolation: str = "lanczos",
+        method: str = "fill / crop",
+        condition: str = "always",
+        multiple_of: int = 0,
+        centering_preference: str = "center",
         padding: float = 0.12,
         saliency_lower_pct: float = 0.05,
         saliency_upper_pct: float = 0.95,
         refine_with_grabcut: bool = False,
-        out_width: int = 0,
-        out_height: int = 0,
-        allow_upscale: bool = False,
-        resize_interpolation: str = "lanczos",
         fallback_center_crop: bool = True,
     ):
         """
@@ -237,7 +277,12 @@ class POISmartCrop:
         """
         assert images.dim() == 4, "Expected [B,H,W,C] tensor"
         B, H, W, C = images.shape
-        aspect = max(1e-6, float(target_aspect_w) / float(target_aspect_h))
+        target_aspect = max(1e-6, float(width) / float(height))
+
+        # Apply multiple_of constraint if specified
+        if multiple_of > 0:
+            width = ((width + multiple_of - 1) // multiple_of) * multiple_of
+            height = ((height + multiple_of - 1) // multiple_of) * multiple_of
 
         out_list = []
         last_box = (0, 0, W, H)
@@ -246,6 +291,19 @@ class POISmartCrop:
             frame = images[b]  # [H,W,C]
             np_img = _to_uint8(frame)
             h, w = np_img.shape[:2]
+
+            # Check condition for resizing
+            should_resize = True
+            if condition == "if_larger":
+                should_resize = width < w or height < h
+            elif condition == "if_smaller":
+                should_resize = width > w or height > h
+
+            if not should_resize:
+                # Return original image if condition not met
+                out_list.append(_to_tensor(np_img))
+                last_box = (0, 0, w, h)
+                continue
 
             # grayscale
             gray = np_img
@@ -277,13 +335,13 @@ class POISmartCrop:
             # if saliency is too flat, optionally fallback to center crop
             if float(S.sum()) < 1e-6 and fallback_center_crop:
                 # center box with aspect
-                if w / h < aspect:
+                if w / h < target_aspect:
                     # image narrower than target -> height drives
                     bw = w
-                    bh = int(round(w / aspect))
+                    bh = int(round(w / target_aspect))
                 else:
                     bh = h
-                    bw = int(round(h * aspect))
+                    bw = int(round(h * target_aspect))
                 cx = w // 2
                 cy = h // 2
                 x0 = max(0, cx - bw // 2)
@@ -292,18 +350,40 @@ class POISmartCrop:
                 y1 = min(h, y0 + bh)
 
             # adjust to target aspect and clamp
-            x0, y0, x1, y1 = _fit_box_to_aspect(x0, y0, x1, y1, w, h, aspect, padding=padding)
+            x0, y0, x1, y1 = _fit_box_to_aspect(x0, y0, x1, y1, w, h, target_aspect, padding=padding)
+            
+            # Apply centering preference
+            x0, y0, x1, y1 = _apply_centering_preference(x0, y0, x1, y1, w, h, width, height, centering_preference)
+            
             last_box = (int(x0), int(y0), int(x1), int(y1))
 
             # crop
             crop = np_img[y0:y1, x0:x1, :]
 
-            # optional resize
-            if out_width > 0 and out_height > 0:
-                crop = _resize_np(
-                    crop, out_width, out_height, allow_upscale=allow_upscale,
-                    interpolation=resize_interpolation
-                )
+            # Apply resize method - always maintain aspect ratio
+            crop_h, crop_w = crop.shape[:2]
+            
+            if method == "fit":
+                # Fit the crop to target dimensions while maintaining aspect ratio
+                # Scale down to fit within target dimensions
+                scale = min(width / crop_w, height / crop_h)
+                new_w = int(crop_w * scale)
+                new_h = int(crop_h * scale)
+                crop = _resize_np(crop, new_w, new_h, allow_upscale=True, interpolation=interpolation)
+            else:  # "fill / crop" - default behavior
+                # Scale to fill target dimensions, maintaining aspect ratio
+                # This may result in dimensions larger than target, which will be cropped
+                scale = max(width / crop_w, height / crop_h)
+                new_w = int(crop_w * scale)
+                new_h = int(crop_h * scale)
+                crop = _resize_np(crop, new_w, new_h, allow_upscale=True, interpolation=interpolation)
+                
+                # If the scaled image is larger than target, center crop to target size
+                if new_w > width or new_h > height:
+                    # Calculate crop coordinates to center the image
+                    start_x = max(0, (new_w - width) // 2)
+                    start_y = max(0, (new_h - height) // 2)
+                    crop = crop[start_y:start_y + height, start_x:start_x + width]
 
             out_list.append(_to_tensor(crop))
 
