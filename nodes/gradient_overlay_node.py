@@ -17,9 +17,10 @@ class APZmediaGradientOverlay:
                 "background_image": ("IMAGE", {}),
                 "hex_color": ("STRING", {"default": "#0066CC", "multiline": False}),
                 "gradient_type": (["linear", "radial", "conical"], {"default": "linear"}),
-                "orientation": (["horizontal", "vertical"], {"default": "horizontal"}),
-                "start_position": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "end_position": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "start_x": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "start_y": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "end_x": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "end_y": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "start_opacity": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "end_opacity": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
@@ -37,8 +38,8 @@ class APZmediaGradientOverlay:
     FUNCTION = "create_gradient_overlay"
     CATEGORY = "apzmedia_brand"
 
-    def create_gradient_overlay(self, background_image, hex_color, gradient_type, orientation, 
-                               start_position, end_position, start_opacity, end_opacity, 
+    def create_gradient_overlay(self, background_image, hex_color, gradient_type, 
+                               start_x, start_y, end_x, end_y, start_opacity, end_opacity, 
                                blend_mode="normal", gradient_center_x=0.5, gradient_center_y=0.5, 
                                gradient_radius=0.5):
         """
@@ -48,9 +49,10 @@ class APZmediaGradientOverlay:
             background_image: Background image tensor (C, H, W) format with RGB channels
             hex_color: Hex color string for the gradient
             gradient_type: Type of gradient (linear, radial, conical)
-            orientation: Orientation for linear gradients ("horizontal" or "vertical")
-            start_position: Starting position for gradient (0.0 to 1.0)
-            end_position: Ending position for gradient (0.0 to 1.0)
+            start_x: Starting X position for linear gradient (0.0 to 1.0)
+            start_y: Starting Y position for linear gradient (0.0 to 1.0)
+            end_x: Ending X position for linear gradient (0.0 to 1.0)
+            end_y: Ending Y position for linear gradient (0.0 to 1.0)
             start_opacity: Starting opacity value (0.0 = transparent, 1.0 = opaque)
             end_opacity: Ending opacity value (0.0 = transparent, 1.0 = opaque)
             blend_mode: Blending mode for overlay (normal, multiply, screen, overlay, soft_light, hard_light)
@@ -83,7 +85,7 @@ class APZmediaGradientOverlay:
 
             # Create gradient mask with opacity interpolation
             gradient_mask = self._create_gradient_mask(
-                background_image, gradient_type, orientation, start_position, end_position,
+                background_image, gradient_type, start_x, start_y, end_x, end_y,
                 start_opacity, end_opacity, gradient_center_x, gradient_center_y, gradient_radius
             )
             
@@ -208,8 +210,8 @@ class APZmediaGradientOverlay:
             logger.error(f"Failed to parse hex color '{hex_color}': {str(e)}")
             return None
 
-    def _create_gradient_mask(self, background_image, gradient_type, orientation, start_position, 
-                             end_position, start_opacity, end_opacity, gradient_center_x, 
+    def _create_gradient_mask(self, background_image, gradient_type, start_x, start_y, end_x, 
+                             end_y, start_opacity, end_opacity, gradient_center_x, 
                              gradient_center_y, gradient_radius):
         """
         Create gradient mask based on type and parameters.
@@ -223,7 +225,7 @@ class APZmediaGradientOverlay:
             # Create gradient mask based on type
             if gradient_type == "linear":
                 return self._create_linear_gradient_mask(
-                    height, width, orientation, start_position, end_position, start_opacity, end_opacity
+                    height, width, start_x, start_y, end_x, end_y, start_opacity, end_opacity
                 )
             elif gradient_type == "radial":
                 return self._create_radial_gradient_mask(
@@ -241,9 +243,9 @@ class APZmediaGradientOverlay:
             logger.error(f"Failed to create gradient mask: {str(e)}")
             return torch.zeros(background_image.shape[1], background_image.shape[2], dtype=torch.float32)
 
-    def _create_linear_gradient_mask(self, height, width, orientation, start_position, 
-                                   end_position, start_opacity, end_opacity):
-        """Create linear gradient mask with start/end positions controlling where gradient begins/ends."""
+    def _create_linear_gradient_mask(self, height, width, start_x, start_y, end_x, end_y, 
+                                   start_opacity, end_opacity):
+        """Create linear gradient mask with directional start and end points."""
         try:
             # Create coordinate grids
             y_coords, x_coords = torch.meshgrid(
@@ -252,75 +254,37 @@ class APZmediaGradientOverlay:
                 indexing='ij'
             )
             
-            # Normalize coordinates to 0-1 range
-            y_norm = y_coords / (height - 1) if height > 1 else torch.zeros_like(y_coords)
-            x_norm = x_coords / (width - 1) if width > 1 else torch.zeros_like(x_coords)
+            # Convert start and end points to pixel coordinates
+            start_x_px = start_x * (width - 1) if width > 1 else 0
+            start_y_px = start_y * (height - 1) if height > 1 else 0
+            end_x_px = end_x * (width - 1) if width > 1 else 0
+            end_y_px = end_y * (height - 1) if height > 1 else 0
             
-            # Calculate gradient based on orientation
-            if orientation == "horizontal":
-                gradient = x_norm
-            elif orientation == "vertical":
-                gradient = y_norm
-            else:
-                gradient = x_norm  # Default to horizontal
+            # Calculate the gradient direction vector
+            dx = end_x_px - start_x_px
+            dy = end_y_px - start_y_px
             
-            # Apply start/end positions - these control WHERE the gradient begins and ends
-            # start_position = where gradient starts (0.0 = left/top, 1.0 = right/bottom)
-            # end_position = where gradient ends (0.0 = left/top, 1.0 = right/bottom)
+            # Handle edge case where start and end points are the same
+            if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+                # Same point: solid color
+                return torch.full((height, width), start_opacity, dtype=torch.float32)
             
-            # Create mask based on position ranges
-            if end_position > start_position:
-                # Normal case: gradient from start_position to end_position
-                # Before start_position: use start_opacity
-                # Between start and end: interpolate from start_opacity to end_opacity
-                # After end_position: use end_opacity
-                
-                # Create position-based mask
-                before_start = gradient < start_position
-                between_start_end = (gradient >= start_position) & (gradient <= end_position)
-                after_end = gradient > end_position
-                
-                # Initialize mask
-                mask = torch.zeros_like(gradient)
-                
-                # Before start: use start_opacity
-                mask[before_start] = start_opacity
-                
-                # After end: use end_opacity
-                mask[after_end] = end_opacity
-                
-                # Between start and end: interpolate
-                if torch.any(between_start_end):
-                    # Normalize gradient values between start and end to 0-1
-                    normalized_gradient = (gradient[between_start_end] - start_position) / (end_position - start_position)
-                    # Interpolate opacity
-                    mask[between_start_end] = start_opacity + (end_opacity - start_opacity) * normalized_gradient
-                    
-            elif end_position < start_position:
-                # Reversed case: gradient from end_position to start_position
-                before_end = gradient < end_position
-                between_end_start = (gradient >= end_position) & (gradient <= start_position)
-                after_start = gradient > start_position
-                
-                # Initialize mask
-                mask = torch.zeros_like(gradient)
-                
-                # Before end: use end_opacity
-                mask[before_end] = end_opacity
-                
-                # After start: use start_opacity
-                mask[after_start] = start_opacity
-                
-                # Between end and start: interpolate
-                if torch.any(between_end_start):
-                    # Normalize gradient values between end and start to 0-1
-                    normalized_gradient = (gradient[between_end_start] - end_position) / (start_position - end_position)
-                    # Interpolate opacity (reversed direction)
-                    mask[between_end_start] = end_opacity + (start_opacity - end_opacity) * normalized_gradient
-                    
-            else:
-                # Same position: solid color
-                mask = torch.full_like(gradient, start_opacity)
+            # Calculate the gradient distance for each pixel
+            # Project each pixel onto the gradient line
+            # Distance along the gradient line from start point
+            gradient_distance = ((x_coords - start_x_px) * dx + (y_coords - start_y_px) * dy) / (dx * dx + dy * dy)
+            
+            # Calculate the total length of the gradient line
+            gradient_length = torch.sqrt(torch.tensor(dx * dx + dy * dy, dtype=torch.float32))
+            
+            # Normalize the gradient distance to 0-1 range
+            gradient_normalized = gradient_distance / gradient_length
+            
+            # Clamp to 0-1 range
+            gradient_normalized = torch.clamp(gradient_normalized, 0.0, 1.0)
+            
+            # Interpolate opacity based on normalized gradient position
+            mask = start_opacity + (end_opacity - start_opacity) * gradient_normalized
             
             return mask
             
