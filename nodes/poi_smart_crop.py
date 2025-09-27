@@ -519,8 +519,27 @@ class POISmartCrop:
             if show_overlay_bool:
                 # Draw overlay on the original image to show POI detection
                 debug_img = _draw_poi_overlay(np_img, x0, y0, x1, y1, color=(255, 0, 0), thickness=3)
-                # Also draw on the crop to show the final result
-                crop = _draw_poi_overlay(crop, 0, 0, crop.shape[1], crop.shape[0], color=(0, 255, 0), thickness=2)
+                # Draw a box around the detected POI area within the cropped image
+                # The POI box represents the most important region within the crop
+                crop_h, crop_w = crop.shape[:2]
+                
+                # Calculate the center of the detected POI area
+                poi_center_x = (x0 + x1) // 2
+                poi_center_y = (y0 + y1) // 2
+                
+                # Calculate POI box size (about 60% of the crop area)
+                poi_width = int(crop_w * 0.6)
+                poi_height = int(crop_h * 0.6)
+                
+                # Center the POI box within the crop
+                poi_x0 = (crop_w - poi_width) // 2
+                poi_y0 = (crop_h - poi_height) // 2
+                poi_x1 = poi_x0 + poi_width
+                poi_y1 = poi_y0 + poi_height
+                
+                # Draw the POI box within the crop
+                crop = _draw_poi_overlay(crop, poi_x0, poi_y0, poi_x1, poi_y1, 
+                                       color=(0, 255, 0), thickness=3)
 
             # Apply resize method - always maintain aspect ratio
             crop_h, crop_w = crop.shape[:2]
