@@ -25,17 +25,19 @@ def _to_tensor(img_np: np.ndarray) -> torch.Tensor:
 
 def spectral_residual_saliency(gray: np.ndarray) -> np.ndarray:
     """
-    Lightweight saliency (Hou & Zhang 2007).
+    Enhanced saliency detection with better thresholding.
     Input gray uint8 [H,W], returns float32 saliency 0..1
     """
     # ensure float
     g = gray.astype(np.float32) / 255.0
+    h, w = g.shape
+    
     # FFT
     G = np.fft.fft2(g)
     A = np.abs(G)
     L = np.log(A + 1e-8)
+    
     # average filter on log amplitude (using simple box blur)
-    # small kernel is fine/fast
     kernel = 3
     pad = kernel // 2
     L_pad = np.pad(L, ((pad, pad), (pad, pad)), mode="reflect")
@@ -45,15 +47,27 @@ def spectral_residual_saliency(gray: np.ndarray) -> np.ndarray:
         L_pad[2:, :-2] + L_pad[2:, 1:-1] + L_pad[2:, 2:]
     ) / 9.0
     R = L - L_avg
+    
     # reconstruct
     S = np.abs(np.fft.ifft2(np.exp(R) * np.exp(1j * np.angle(G))))
-    # smooth
+    
+    # smooth with smaller sigma for more focused detection
     from scipy.ndimage import gaussian_filter
-    S = gaussian_filter(S, sigma=2.0)
-    # normalize
+    S = gaussian_filter(S, sigma=1.0)
+    
+    # Apply thresholding to focus on high-saliency regions
+    # Remove low-saliency areas more aggressively
+    threshold = np.percentile(S, 70)  # Keep only top 30% of saliency values
+    S = np.where(S > threshold, S, 0)
+    
+    # Normalize
     S -= S.min()
     if S.max() > 0:
         S /= S.max()
+    
+    # Apply additional smoothing to create more focused regions
+    S = gaussian_filter(S, sigma=0.5)
+    
     return S.astype(np.float32)
 
 
@@ -71,20 +85,111 @@ def _weighted_percentile_indices(weights_1d: np.ndarray, lower=0.05, upper=0.95)
 
 def _compute_median_box_from_saliency(S: np.ndarray, mass_clip=(0.05, 0.95)):
     """
-    Turns a saliency map into a robust box using weighted percentiles along axes.
+    Dynamic automated box computation that adapts to image content.
     Returns (x0, y0, x1, y1) inclusive-exclusive in image coords.
     """
+    h, w = S.shape
+    
+    # Check if saliency map has any meaningful content
+    if S.sum() < 1e-6:
+        # Return center region if no saliency
+        center_x, center_y = w // 2, h // 2
+        box_size = min(w, h) // 4
+        return (center_x - box_size//2, center_y - box_size//2, 
+                center_x + box_size//2, center_y + box_size//2)
+    
+    # Dynamic thresholding based on saliency distribution
+    saliency_flat = S.flatten()
+    saliency_flat = saliency_flat[saliency_flat > 0]  # Remove zeros
+    
+    if len(saliency_flat) == 0:
+        # No meaningful saliency, return center
+        center_x, center_y = w // 2, h // 2
+        box_size = min(w, h) // 4
+        return (center_x - box_size//2, center_y - box_size//2, 
+                center_x + box_size//2, center_y + box_size//2)
+    
+    # Analyze saliency distribution to determine optimal threshold
+    mean_saliency = np.mean(saliency_flat)
+    std_saliency = np.std(saliency_flat)
+    
+    # Dynamic threshold: mean + 0.5 * std (adapts to content)
+    dynamic_threshold = mean_saliency + 0.5 * std_saliency
+    
+    # Apply dynamic thresholding
+    S_focused = np.where(S > dynamic_threshold, S, 0)
+    
+    # If thresholding removes too much, use a more conservative approach
+    if S_focused.sum() < S.sum() * 0.05:  # Less than 5% remains
+        # Use a more conservative threshold
+        conservative_threshold = mean_saliency + 0.2 * std_saliency
+        S_focused = np.where(S > conservative_threshold, S, 0)
+        
+        # If still too restrictive, use percentile-based approach
+        if S_focused.sum() < S.sum() * 0.05:
+            percentile_threshold = np.percentile(saliency_flat, 70)  # Top 30%
+            S_focused = np.where(S > percentile_threshold, S, 0)
+    
+    # If still no meaningful content, use original with very light thresholding
+    if S_focused.sum() < S.sum() * 0.01:
+        S_focused = S
+    
     # collapse to 1D distributions
-    wy = S.sum(axis=1)  # per-row weights
-    wx = S.sum(axis=0)  # per-col weights
-    y0, y1 = _weighted_percentile_indices(wy, mass_clip[0], mass_clip[1])
-    x0, x1 = _weighted_percentile_indices(wx, mass_clip[0], mass_clip[1])
+    wy = S_focused.sum(axis=1)  # per-row weights
+    wx = S_focused.sum(axis=0)  # per-col weights
+    
+    # Dynamic mass clipping based on content distribution
+    # Analyze the weight distributions to determine optimal clipping
+    wy_nonzero = wy[wy > 0]
+    wx_nonzero = wx[wx > 0]
+    
+    if len(wy_nonzero) > 0 and len(wx_nonzero) > 0:
+        # Calculate dynamic clipping based on weight distribution
+        wy_mean, wy_std = np.mean(wy_nonzero), np.std(wy_nonzero)
+        wx_mean, wx_std = np.mean(wx_nonzero), np.std(wx_nonzero)
+        
+        # Dynamic clipping: focus on regions with weights > mean - 0.5*std
+        y_threshold = max(0, wy_mean - 0.5 * wy_std)
+        x_threshold = max(0, wx_mean - 0.5 * wx_std)
+        
+        # Find indices where weights exceed threshold
+        y_indices = np.where(wy > y_threshold)[0]
+        x_indices = np.where(wx > x_threshold)[0]
+        
+        if len(y_indices) > 0 and len(x_indices) > 0:
+            y0, y1 = y_indices[0], y_indices[-1] + 1
+            x0, x1 = x_indices[0], x_indices[-1] + 1
+        else:
+            # Fallback to percentile-based approach
+            y0, y1 = _weighted_percentile_indices(wy, 0.1, 0.9)
+            x0, x1 = _weighted_percentile_indices(wx, 0.1, 0.9)
+    else:
+        # Fallback to original method
+        y0, y1 = _weighted_percentile_indices(wy, 0.1, 0.9)
+        x0, x1 = _weighted_percentile_indices(wx, 0.1, 0.9)
 
-    # Ensure at least 1px extent
-    if x1 == x0:
-        x1 = min(x0 + 1, S.shape[1] - 1)
-    if y1 == y0:
-        y1 = min(y0 + 1, S.shape[0] - 1)
+    # Ensure reasonable minimum size (at least 5% of image, max 50%)
+    min_w, min_h = max(1, w // 20), max(1, h // 20)
+    max_w, max_h = w // 2, h // 2
+    
+    if x1 - x0 < min_w:
+        center_x = (x0 + x1) // 2
+        x0 = max(0, center_x - min_w // 2)
+        x1 = min(w, x0 + min_w)
+    elif x1 - x0 > max_w:
+        center_x = (x0 + x1) // 2
+        x0 = max(0, center_x - max_w // 2)
+        x1 = min(w, x0 + max_w)
+        
+    if y1 - y0 < min_h:
+        center_y = (y0 + y1) // 2
+        y0 = max(0, center_y - min_h // 2)
+        y1 = min(h, y0 + min_h)
+    elif y1 - y0 > max_h:
+        center_y = (y0 + y1) // 2
+        y0 = max(0, center_y - max_h // 2)
+        y1 = min(h, y0 + max_h)
+    
     return int(x0), int(y0), int(x1), int(y1)
 
 
@@ -272,13 +377,11 @@ class POISmartCrop:
                 "multiple_of": ("INT", {"default": 0, "min": 0, "max": 64}),
                 "centering_preference": (["left", "center", "right"], {"default": "center"}),
                 "padding": ("FLOAT", {"default": 0.12, "min": 0.0, "max": 0.75, "step": 0.01}),
-                "saliency_lower_pct": ("FLOAT", {"default": 0.05, "min": 0.0, "max": 0.5, "step": 0.01}),
-                "saliency_upper_pct": ("FLOAT", {"default": 0.95, "min": 0.5, "max": 1.0, "step": 0.01}),
             },
             "optional": {
-                "refine_with_grabcut": (["enabled", "disabled"], {"default": "disabled"}),
-                "fallback_center_crop": (["enabled", "disabled"], {"default": "enabled"}),
-                "show_overlay": (["enabled", "disabled"], {"default": "disabled"}),
+                "refine_with_grabcut": ("BOOLEAN", {"default": False}),
+                "fallback_center_crop": ("BOOLEAN", {"default": True}),
+                "show_overlay": ("BOOLEAN", {"default": False}),
             }
         }
 
@@ -298,11 +401,9 @@ class POISmartCrop:
         multiple_of: int = 0,
         centering_preference: str = "center",
         padding: float = 0.12,
-        saliency_lower_pct: float = 0.05,
-        saliency_upper_pct: float = 0.95,
-        refine_with_grabcut: str = "disabled",
-        fallback_center_crop: str = "enabled",
-        show_overlay: str = "disabled",
+        refine_with_grabcut: bool = False,
+        fallback_center_crop: bool = True,
+        show_overlay: bool = False,
     ):
         """
         images: torch tensor [B,H,W,C], 0..1
@@ -312,10 +413,10 @@ class POISmartCrop:
         B, H, W, C = images.shape
         target_aspect = max(1e-6, float(width) / float(height))
         
-        # Convert string options to boolean values
-        refine_with_grabcut_bool = refine_with_grabcut == "enabled"
-        fallback_center_crop_bool = fallback_center_crop == "enabled"
-        show_overlay_bool = show_overlay == "enabled"
+        # Handle optional parameters (they might be None if not connected)
+        refine_with_grabcut_bool = refine_with_grabcut if refine_with_grabcut is not None else False
+        fallback_center_crop_bool = fallback_center_crop if fallback_center_crop is not None else True
+        show_overlay_bool = show_overlay if show_overlay is not None else False
 
         # Apply multiple_of constraint if specified
         if multiple_of > 0:
@@ -352,12 +453,30 @@ class POISmartCrop:
 
             # saliency
             S = spectral_residual_saliency(gray)
+            
+            # Check if saliency is too uniform (indicating poor detection)
+            saliency_std = np.std(S)
+            saliency_range = np.max(S) - np.min(S)
+            
+            # If saliency is too uniform, try edge-based fallback
+            if saliency_std < 0.01 or saliency_range < 0.1:
+                if _HAS_CV2:
+                    # Use edge detection as fallback
+                    edges = cv2.Canny(gray, 50, 150)
+                    # Convert edges to saliency-like map
+                    S = edges.astype(np.float32) / 255.0
+                    # Apply gaussian blur to make it more like saliency
+                    S = cv2.GaussianBlur(S, (15, 15), 0)
+                    S = S / (S.max() + 1e-8)
+                else:
+                    # Simple gradient-based fallback
+                    from scipy.ndimage import sobel
+                    S = np.sqrt(sobel(gray, axis=0)**2 + sobel(gray, axis=1)**2)
+                    S = S / (S.max() + 1e-8)
 
             # optional GrabCut refinement
             if refine_with_grabcut_bool and _HAS_CV2:
-                x0_s, y0_s, x1_s, y1_s = _compute_median_box_from_saliency(
-                    S, (saliency_lower_pct, saliency_upper_pct)
-                )
+                x0_s, y0_s, x1_s, y1_s = _compute_median_box_from_saliency(S)
                 rect = (x0_s, y0_s, max(1, x1_s - x0_s), max(1, y1_s - y0_s))
                 gc_mask = _refine_with_grabcut(cv2.cvtColor(np_img, cv2.COLOR_RGB2BGR), rect)
                 if gc_mask is not None:
@@ -365,10 +484,8 @@ class POISmartCrop:
                     if S.max() > 0:
                         S = S / S.max()
 
-            # median/percentile box
-            x0, y0, x1, y1 = _compute_median_box_from_saliency(
-                S, (saliency_lower_pct, saliency_upper_pct)
-            )
+            # Dynamic automated box computation
+            x0, y0, x1, y1 = _compute_median_box_from_saliency(S)
 
             # if saliency is too flat, optionally fallback to center crop
             if float(S.sum()) < 1e-6 and fallback_center_crop_bool:
