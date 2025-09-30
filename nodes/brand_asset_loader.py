@@ -938,7 +938,7 @@ class APZmediaBrandAssetLoader:
             empty_assets,
             empty_logo, empty_mask, empty_logo, empty_mask, empty_logo, empty_mask,
             empty_logo, empty_mask, empty_logo, empty_mask,
-            "", "", "", "", "", "", "",
+            "", "", "", "", "", "", "", "", "",
             self._get_default_color_palette(),
             "Unknown Brand",
             status_message
