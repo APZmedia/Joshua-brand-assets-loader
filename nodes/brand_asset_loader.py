@@ -79,11 +79,11 @@ class APZmediaBrandAssetLoader:
 
     RETURN_TYPES = (
         "BRAND_ASSETS",
-        "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK",  # logos with masks
-        "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING",  # font paths
-        "STRING",  # color palette JSON
-        "STRING",  # brand name
-        "STRING",  # status message
+        "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK",
+        "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING",
+        "STRING",
+        "STRING",
+        "STRING"
     )
     RETURN_NAMES = (
         "brand_assets",
@@ -938,7 +938,7 @@ class APZmediaBrandAssetLoader:
             empty_assets,
             empty_logo, empty_mask, empty_logo, empty_mask, empty_logo, empty_mask,
             empty_logo, empty_mask, empty_logo, empty_mask,
-            "", "", "", "", "", "", "", "", "",
+            "", "", "", "", "", "", "",
             self._get_default_color_palette(),
             "Unknown Brand",
             status_message
