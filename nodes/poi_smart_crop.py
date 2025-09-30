@@ -83,6 +83,41 @@ def _weighted_percentile_indices(weights_1d: np.ndarray, lower=0.05, upper=0.95)
     return lo_idx, hi_idx
 
 
+def _compute_focused_poi_point(S: np.ndarray, poi_size_percent: float, img_w: int, img_h: int):
+    """
+    Create a small focused POI point instead of a large box.
+    Returns (x0, y0, x1, y1) for a small POI box centered on the most salient region.
+    """
+    h, w = S.shape
+    
+    # Calculate POI box size as percentage of image
+    poi_w = max(1, int(w * poi_size_percent / 100.0))
+    poi_h = max(1, int(h * poi_size_percent / 100.0))
+    
+    # Find the center of mass of the saliency map
+    if S.sum() < 1e-6:
+        # No saliency, return center of image
+        center_x, center_y = w // 2, h // 2
+    else:
+        # Calculate weighted center of mass
+        y_coords, x_coords = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
+        total_weight = S.sum()
+        
+        if total_weight > 0:
+            center_x = int((S * x_coords).sum() / total_weight)
+            center_y = int((S * y_coords).sum() / total_weight)
+        else:
+            center_x, center_y = w // 2, h // 2
+    
+    # Create small box centered on the POI
+    x0 = max(0, center_x - poi_w // 2)
+    y0 = max(0, center_y - poi_h // 2)
+    x1 = min(w, x0 + poi_w)
+    y1 = min(h, y0 + poi_h)
+    
+    return int(x0), int(y0), int(x1), int(y1)
+
+
 def _compute_median_box_from_saliency(S: np.ndarray, mass_clip=(0.05, 0.95)):
     """
     Dynamic automated box computation that adapts to image content.
@@ -359,6 +394,40 @@ def _draw_poi_overlay(img: np.ndarray, x0: int, y0: int, x1: int, y1: int, color
     return overlay_img
 
 
+def _saliency_to_image(S: np.ndarray, colormap="hot"):
+    """
+    Convert saliency map to a visual RGB image.
+    Returns a tensor compatible with ComfyUI IMAGE format.
+    """
+    # Normalize saliency to 0-1 range
+    S_norm = S.copy()
+    if S_norm.max() > S_norm.min():
+        S_norm = (S_norm - S_norm.min()) / (S_norm.max() - S_norm.min())
+    
+    # Convert to uint8
+    S_uint8 = (S_norm * 255).astype(np.uint8)
+    
+    # Apply colormap
+    if colormap == "hot":
+        # Hot colormap: black -> red -> yellow -> white
+        S_rgb = np.zeros((*S_uint8.shape, 3), dtype=np.uint8)
+        S_rgb[:, :, 0] = np.clip(S_uint8 * 3, 0, 255)  # Red channel
+        S_rgb[:, :, 1] = np.clip((S_uint8 - 85) * 3, 0, 255)  # Green channel
+        S_rgb[:, :, 2] = np.clip((S_uint8 - 170) * 3, 0, 255)  # Blue channel
+    elif colormap == "jet":
+        # Jet colormap: blue -> green -> yellow -> red
+        S_rgb = np.zeros((*S_uint8.shape, 3), dtype=np.uint8)
+        S_rgb[:, :, 0] = np.clip((S_uint8 - 128) * 2, 0, 255)  # Red channel
+        S_rgb[:, :, 1] = np.clip(255 - np.abs(S_uint8 - 128) * 2, 0, 255)  # Green channel
+        S_rgb[:, :, 2] = np.clip((128 - S_uint8) * 2, 0, 255)  # Blue channel
+    else:  # grayscale
+        S_rgb = np.stack([S_uint8, S_uint8, S_uint8], axis=-1)
+    
+    # Convert to tensor format [H, W, C] with values 0-1
+    S_tensor = torch.from_numpy(S_rgb.astype(np.float32) / 255.0)
+    return S_tensor
+
+
 class POISmartCrop:
     """
     ComfyUI node: lightweight smart crop keeping point-of-interest in frame.
@@ -379,14 +448,15 @@ class POISmartCrop:
                 "padding": ("FLOAT", {"default": 0.12, "min": 0.0, "max": 0.75, "step": 0.01}),
             },
             "optional": {
+                "poi_size_percent": ("FLOAT", {"default": 10.0, "min": 1.0, "max": 50.0, "step": 1.0}),
                 "refine_with_grabcut": ("BOOLEAN", {"default": False}),
                 "fallback_center_crop": ("BOOLEAN", {"default": True}),
                 "show_overlay": ("BOOLEAN", {"default": False}),
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "BOX",)
-    RETURN_NAMES = ("cropped", "box_xyxy")
+    RETURN_TYPES = ("IMAGE", "BOX", "IMAGE",)
+    RETURN_NAMES = ("cropped", "box_xyxy", "saliency_map")
     FUNCTION = "run"
     CATEGORY = "image/transform"
 
@@ -401,6 +471,7 @@ class POISmartCrop:
         multiple_of: int = 0,
         centering_preference: str = "center",
         padding: float = 0.12,
+        poi_size_percent: float = 10.0,
         refine_with_grabcut: bool = False,
         fallback_center_crop: bool = True,
         show_overlay: bool = False,
@@ -424,6 +495,7 @@ class POISmartCrop:
             height = ((height + multiple_of - 1) // multiple_of) * multiple_of
 
         out_list = []
+        saliency_list = []
         last_box = (0, 0, W, H)
 
         for b in range(B):
@@ -473,6 +545,9 @@ class POISmartCrop:
                     from scipy.ndimage import sobel
                     S = np.sqrt(sobel(gray, axis=0)**2 + sobel(gray, axis=1)**2)
                     S = S / (S.max() + 1e-8)
+            
+            # Convert saliency map to visual image
+            saliency_img = _saliency_to_image(S, colormap="hot")
 
             # optional GrabCut refinement
             if refine_with_grabcut_bool and _HAS_CV2:
@@ -484,8 +559,8 @@ class POISmartCrop:
                     if S.max() > 0:
                         S = S / S.max()
 
-            # Dynamic automated box computation
-            x0, y0, x1, y1 = _compute_median_box_from_saliency(S)
+            # Create focused POI point instead of large box
+            x0, y0, x1, y1 = _compute_focused_poi_point(S, poi_size_percent, w, h)
 
             # if saliency is too flat, optionally fallback to center crop
             if float(S.sum()) < 1e-6 and fallback_center_crop_bool:
@@ -504,11 +579,58 @@ class POISmartCrop:
                 y0 = max(0, cy - bh // 2)
                 y1 = min(h, y0 + bh)
 
-            # adjust to target aspect and clamp
-            x0, y0, x1, y1 = _fit_box_to_aspect(x0, y0, x1, y1, w, h, target_aspect, padding=padding)
+            # Apply centering preference to the POI point first
+            poi_center_x = (x0 + x1) / 2
+            poi_center_y = (y0 + y1) / 2
             
-            # Apply centering preference
-            x0, y0, x1, y1 = _apply_centering_preference(x0, y0, x1, y1, w, h, width, height, centering_preference)
+            # Calculate target center based on preference
+            if centering_preference == "left":
+                target_center_x = width / 2  # Left side of target
+            elif centering_preference == "right":
+                target_center_x = w - width / 2  # Right side of target
+            else:  # center
+                target_center_x = w / 2  # Center of image
+            
+            target_center_y = h / 2  # Always center vertically
+            
+            # Calculate offset needed to move POI to target position
+            offset_x = target_center_x - poi_center_x
+            offset_y = target_center_y - poi_center_y
+            
+            # Apply offset to POI point
+            x0 = max(0, int(x0 + offset_x))
+            y0 = max(0, int(y0 + offset_y))
+            x1 = min(w, int(x1 + offset_x))
+            y1 = min(h, int(y1 + offset_y))
+            
+            # Now create the final crop box with target aspect ratio
+            # Use the POI point as the center for the aspect ratio box
+            poi_center_x = (x0 + x1) / 2
+            poi_center_y = (y0 + y1) / 2
+            
+            # Calculate crop box dimensions with target aspect ratio
+            if w / h < target_aspect:
+                # Image is narrower than target -> height drives
+                crop_h = h
+                crop_w = int(h * target_aspect)
+            else:
+                # Image is wider than target -> width drives
+                crop_w = w
+                crop_h = int(w / target_aspect)
+            
+            # Center the crop box on the POI point
+            x0 = max(0, int(poi_center_x - crop_w / 2))
+            y0 = max(0, int(poi_center_y - crop_h / 2))
+            x1 = min(w, x0 + crop_w)
+            y1 = min(h, y0 + crop_h)
+            
+            # Adjust if we hit boundaries
+            if x1 > w:
+                x0 = max(0, w - crop_w)
+                x1 = w
+            if y1 > h:
+                y0 = max(0, h - crop_h)
+                y1 = h
             
             last_box = (int(x0), int(y0), int(x1), int(y1))
 
@@ -518,28 +640,32 @@ class POISmartCrop:
             # Apply debug overlay if enabled
             if show_overlay_bool:
                 # Draw overlay on the original image to show POI detection
-                debug_img = _draw_poi_overlay(np_img, x0, y0, x1, y1, color=(255, 0, 0), thickness=3)
-                # Draw a box around the detected POI area within the cropped image
-                # The POI box represents the most important region within the crop
+                # Show the small focused POI point
+                poi_x0, poi_y0, poi_x1, poi_y1 = _compute_focused_poi_point(S, poi_size_percent, w, h)
+                debug_img = _draw_poi_overlay(np_img, poi_x0, poi_y0, poi_x1, poi_y1, color=(255, 0, 0), thickness=3)
+                
+                # Draw the final crop box on the original image
+                debug_img = _draw_poi_overlay(debug_img, x0, y0, x1, y1, color=(0, 255, 0), thickness=2)
+                
+                # Draw a small indicator on the cropped image to show where the POI is
                 crop_h, crop_w = crop.shape[:2]
                 
-                # Calculate the center of the detected POI area
-                poi_center_x = (x0 + x1) // 2
-                poi_center_y = (y0 + y1) // 2
+                # Calculate where the POI point is within the crop
+                poi_center_x = (poi_x0 + poi_x1) / 2
+                poi_center_y = (poi_y0 + poi_y1) / 2
                 
-                # Calculate POI box size (about 60% of the crop area)
-                poi_width = int(crop_w * 0.6)
-                poi_height = int(crop_h * 0.6)
+                # Convert to crop coordinates
+                crop_poi_x = int((poi_center_x - x0) * crop_w / (x1 - x0))
+                crop_poi_y = int((poi_center_y - y0) * crop_h / (y1 - y0))
                 
-                # Center the POI box within the crop
-                poi_x0 = (crop_w - poi_width) // 2
-                poi_y0 = (crop_h - poi_height) // 2
-                poi_x1 = poi_x0 + poi_width
-                poi_y1 = poi_y0 + poi_height
-                
-                # Draw the POI box within the crop
-                crop = _draw_poi_overlay(crop, poi_x0, poi_y0, poi_x1, poi_y1, 
-                                       color=(0, 255, 0), thickness=3)
+                # Draw a small cross to mark the POI center
+                cross_size = max(3, min(crop_w, crop_h) // 20)
+                if 0 <= crop_poi_x < crop_w and 0 <= crop_poi_y < crop_h:
+                    # Draw cross
+                    crop[max(0, crop_poi_y-cross_size):min(crop_h, crop_poi_y+cross_size+1), 
+                         max(0, crop_poi_x-1):min(crop_w, crop_poi_x+2)] = [0, 255, 0]
+                    crop[max(0, crop_poi_y-1):min(crop_h, crop_poi_y+2), 
+                         max(0, crop_poi_x-cross_size):min(crop_w, crop_poi_x+cross_size+1)] = [0, 255, 0]
 
             # Apply resize method - always maintain aspect ratio
             crop_h, crop_w = crop.shape[:2]
@@ -567,6 +693,7 @@ class POISmartCrop:
                     crop = crop[start_y:start_y + height, start_x:start_x + width]
 
             out_list.append(_to_tensor(crop))
+            saliency_list.append(saliency_img)
 
         # stack back to [B,h,w,c]
         max_h = max(im.shape[0] for im in out_list)
@@ -581,8 +708,20 @@ class POISmartCrop:
             padded.append(canvas)
         out_tensor = torch.stack(padded, dim=0)
 
+        # Process saliency maps similarly
+        saliency_max_h = max(im.shape[0] for im in saliency_list)
+        saliency_max_w = max(im.shape[1] for im in saliency_list)
+        
+        saliency_padded = []
+        for im in saliency_list:
+            h2, w2, _ = im.shape
+            canvas = torch.zeros((saliency_max_h, saliency_max_w, im.shape[2]), dtype=im.dtype)
+            canvas[:h2, :w2, :] = im
+            saliency_padded.append(canvas)
+        saliency_tensor = torch.stack(saliency_padded, dim=0)
+
         # BOX type is a tuple; ComfyUI can pass it around to other nodes if needed
-        return (out_tensor, last_box)
+        return (out_tensor, last_box, saliency_tensor)
 
 
 NODE_CLASS_MAPPINGS = {
