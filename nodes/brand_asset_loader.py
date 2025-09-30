@@ -103,7 +103,8 @@ class APZmediaBrandAssetLoader:
                          logo_horizontal_color="", logo_horizontal_mono="", 
                          logo_icon="", font_primary="", font_primary_bold="", font_primary_italic="",
                          font_secondary="", font_secondary_bold="", font_secondary_italic="",
-                         font_tertiary="", font_tertiary_bold="", font_tertiary_italic="", color_palette=""):
+                         font_tertiary="", font_tertiary_bold="", font_tertiary_italic="", color_palette="",
+                         use_aria2c=True, download_timeout=30):
         """
         Load all brand assets either manually or via API.
         
@@ -906,13 +907,41 @@ class APZmediaBrandAssetLoader:
         """Return default values when asset loading fails."""
         empty_logo = self._create_empty_logo() 
         empty_mask = self._create_empty_mask() 
+        
+        # Create empty assets dictionary
+        empty_assets = {
+            "logo_vertical_color": empty_logo,
+            "logo_vertical_color_mask": empty_mask,
+            "logo_vertical_mono": empty_logo,
+            "logo_vertical_mono_mask": empty_mask,
+            "logo_horizontal_color": empty_logo,
+            "logo_horizontal_color_mask": empty_mask,
+            "logo_horizontal_mono": empty_logo,
+            "logo_horizontal_mono_mask": empty_mask,
+            "logo_icon": empty_logo,
+            "logo_icon_mask": empty_mask,
+            "font_primary": "",
+            "font_primary_bold": "",
+            "font_primary_italic": "",
+            "font_secondary": "",
+            "font_secondary_bold": "",
+            "font_secondary_italic": "",
+            "font_tertiary": "",
+            "font_tertiary_bold": "",
+            "font_tertiary_italic": "",
+            "color_palette": self._get_default_color_palette(),
+            "brand_name": "Unknown Brand",
+            "status_message": status_message
+        }
+        
         return (
+            empty_assets,
             empty_logo, empty_mask, empty_logo, empty_mask, empty_logo, empty_mask,
             empty_logo, empty_mask, empty_logo, empty_mask,
             "", "", "", "", "", "", "", "", "",
             self._get_default_color_palette(),
             "Unknown Brand",
-            status_message, 'OK'
+            status_message
         )
 
 NODE_CLASS_MAPPINGS = {
