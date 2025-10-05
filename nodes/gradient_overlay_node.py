@@ -258,17 +258,17 @@ class APZmediaGradientOverlay:
             
             # Calculate gradient based on orientation
             if orientation == "top":
-                # Top to bottom gradient
+                # Top to bottom gradient (starts at top, ends at bottom)
                 gradient = y_norm
             elif orientation == "bottom":
-                # Bottom to top gradient (inverted)
+                # Bottom to top gradient (starts at bottom, ends at top)
                 gradient = 1.0 - y_norm
             elif orientation == "left":
-                # Left to right gradient
-                gradient = x_norm
-            elif orientation == "right":
-                # Right to left gradient (inverted)
+                # Left to right gradient (starts at left, ends at right) - FIXED: was inverted
                 gradient = 1.0 - x_norm
+            elif orientation == "right":
+                # Right to left gradient (starts at right, ends at left) - FIXED: was inverted
+                gradient = x_norm
             else:
                 # Default to top
                 gradient = y_norm

@@ -17,6 +17,8 @@ setup(
             'logo_placement_node = nodes.logo_placement_node:APZmediaLogoPlacement',
             'logo_overlay_node = nodes.logo_overlay_node:APZmediaLogoOverlay',
             'url_image_loader = nodes.url_image_loader:APZmediaURLImageLoader',
+            'font_selector = nodes.font_selector_node:APZmediaFontSelector',
+            'brand_asset_reader = nodes.brand_asset_reader_node:APZmediaBrandAssetReader',
         ],
     },
     author="Pablo Apiolazza",
