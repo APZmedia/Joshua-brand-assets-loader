@@ -441,33 +441,38 @@ class APZmediaGradientOverlay:
                 # Simple alpha blending: result = base * (1 - alpha) + overlay * alpha
                 result = background_image * (1 - alpha) + masked_overlay
             elif blend_mode == "multiply":
-                # Multiply: result = base * overlay
-                result = background_image * masked_overlay
+                # Multiply: result = base * overlay, then apply alpha for transparency
+                multiplied = background_image * gradient_overlay
+                result = background_image * (1 - alpha) + multiplied * alpha
             elif blend_mode == "screen":
-                # Screen: result = 1 - (1 - base) * (1 - overlay)
-                result = 1 - (1 - background_image) * (1 - masked_overlay)
+                # Screen: result = 1 - (1 - base) * (1 - overlay), then apply alpha for transparency
+                screened = 1 - (1 - background_image) * (1 - gradient_overlay)
+                result = background_image * (1 - alpha) + screened * alpha
             elif blend_mode == "overlay":
                 # Overlay: if base < 0.5: 2 * base * overlay, else: 1 - 2 * (1 - base) * (1 - overlay)
-                result = torch.where(
+                overlaid = torch.where(
                     background_image < 0.5,
-                    2 * background_image * masked_overlay,
-                    1 - 2 * (1 - background_image) * (1 - masked_overlay)
+                    2 * background_image * gradient_overlay,
+                    1 - 2 * (1 - background_image) * (1 - gradient_overlay)
                 )
+                result = background_image * (1 - alpha) + overlaid * alpha
             elif blend_mode == "soft_light":
                 # Soft light: if overlay < 0.5: base - (1 - 2 * overlay) * base * (1 - base)
                 # else: base + (2 * overlay - 1) * (sqrt(base) - base)
-                result = torch.where(
-                    masked_overlay < 0.5,
-                    background_image - (1 - 2 * masked_overlay) * background_image * (1 - background_image),
-                    background_image + (2 * masked_overlay - 1) * (torch.sqrt(background_image) - background_image)
+                soft_lighted = torch.where(
+                    gradient_overlay < 0.5,
+                    background_image - (1 - 2 * gradient_overlay) * background_image * (1 - background_image),
+                    background_image + (2 * gradient_overlay - 1) * (torch.sqrt(background_image) - background_image)
                 )
+                result = background_image * (1 - alpha) + soft_lighted * alpha
             elif blend_mode == "hard_light":
                 # Hard light: if overlay < 0.5: 2 * base * overlay, else: 1 - 2 * (1 - base) * (1 - overlay)
-                result = torch.where(
-                    masked_overlay < 0.5,
-                    2 * background_image * masked_overlay,
-                    1 - 2 * (1 - background_image) * (1 - masked_overlay)
+                hard_lighted = torch.where(
+                    gradient_overlay < 0.5,
+                    2 * background_image * gradient_overlay,
+                    1 - 2 * (1 - background_image) * (1 - gradient_overlay)
                 )
+                result = background_image * (1 - alpha) + hard_lighted * alpha
             else:
                 # Default to normal blending
                 result = background_image * (1 - alpha) + masked_overlay
