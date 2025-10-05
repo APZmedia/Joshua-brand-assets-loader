@@ -21,21 +21,7 @@ class APZmediaColorPaletteSelector:
         return {
             "required": {
                 "palette_json": ("STRING", {}),
-                "color_selection": ("STRING", {
-                    "choices": [
-                        "color_1",
-                        "color_2", 
-                        "color_3",
-                        "color_4",
-                        "color_5",
-                        "color_6",
-                        "color_7",
-                        "first_color",
-                        "second_color",
-                        "third_color"
-                    ],
-                    "default": "color_1"
-                }),
+                "color_selection": (["color_1", "color_2", "color_3", "color_4", "color_5", "color_6", "color_7", "first_color", "second_color", "third_color"], {"default": "color_1"}),
             },
             "optional": {
                 "custom_color": ("STRING", {
@@ -52,15 +38,15 @@ class APZmediaColorPaletteSelector:
     FUNCTION = "select_color"
     CATEGORY = "apzmedia_brand"
 
-    def select_color(self, brand_assets, color_selection, custom_color="", use_custom=False):
+    def select_color(self, palette_json, color_selection, custom_color="", use_custom=False):
         """
-        Select and return the appropriate color from brand assets.
+        Select and return the appropriate color from color palette JSON.
         
         Args:
-            brand_assets: Dictionary containing all brand assets
-            color_selection: Selected color key (primary_color, secondary_color, etc.)
+            palette_json: JSON string containing color palette
+            color_selection: Selected color key (color_1, color_2, etc.)
             custom_color: Custom color hex override
-            use_custom: Whether to use custom color instead of brand assets
+            use_custom: Whether to use custom color instead of palette
             
         Returns:
             Tuple of (color_hex, color_name, color_info, color_palette_json)
@@ -71,15 +57,15 @@ class APZmediaColorPaletteSelector:
                 if self._validate_color_hex(custom_color):
                     color_name = self._extract_color_name(custom_color)
                     color_info = f"Custom Color: {color_name}"
-                    color_palette_json = self._get_color_palette_json(brand_assets)
+                    color_palette_json = palette_json
                     logger.info(f"Using custom color: {custom_color}")
                     return (custom_color, color_name, color_info, color_palette_json)
                 else:
                     logger.warning(f"Invalid custom color: {custom_color}")
                     return self._return_default_color("Invalid custom color")
             
-            # Extract color from brand assets
-            color_hex = self._get_color_from_assets(brand_assets, color_selection)
+            # Extract color from palette JSON
+            color_hex = self._get_color_from_palette(palette_json, color_selection)
             
             if not color_hex:
                 logger.warning(f"No color found for {color_selection}")
@@ -95,7 +81,7 @@ class APZmediaColorPaletteSelector:
             # Convert color_selection to readable format (e.g., primary_color -> Primary Color)
             readable_name = color_selection.replace("_", " ").title()
             color_info = f"{readable_name}: {color_name}"
-            color_palette_json = self._get_color_palette_json(brand_assets)
+            color_palette_json = palette_json
             
             logger.info(f"Selected color: {color_hex} ({color_name})")
             return (color_hex, color_name, color_info, color_palette_json)
@@ -104,29 +90,41 @@ class APZmediaColorPaletteSelector:
             logger.error(f"Error selecting color: {e}")
             return self._return_default_color(f"Error: {str(e)}")
 
-    def _get_color_from_assets(self, brand_assets: Dict[str, Any], color_selection: str) -> str:
+    def _get_color_from_palette(self, palette_json: str, color_selection: str) -> str:
         """
-        Extract color from brand assets dictionary by parsing the color palette JSON.
+        Extract color from palette JSON string.
         
         Args:
-            brand_assets: Dictionary containing brand assets
-            color_selection: Selected color type (primary, secondary, accent, etc.)
+            palette_json: JSON string containing color palette
+            color_selection: Selected color type (color_1, color_2, etc.)
             
         Returns:
             Color hex string or empty string if not found
         """
         try:
-            # Get color palette JSON from brand assets
-            color_palette_json = brand_assets.get("color_palette", "[]")
-            if not color_palette_json:
-                logger.debug("No color palette found in brand assets")
+            # Use the provided palette JSON
+            if not palette_json:
+                logger.debug("No color palette provided")
                 return ""
             
             try:
-                colors = json.loads(color_palette_json)
+                palette_data = json.loads(palette_json)
+                
+                # Handle both flat array and object with colors array
+                if isinstance(palette_data, list):
+                    colors = palette_data
+                elif isinstance(palette_data, dict) and "colors" in palette_data:
+                    colors = palette_data["colors"]
+                else:
+                    logger.debug("Invalid color palette structure")
+                    return ""
+                
                 if not isinstance(colors, list) or len(colors) == 0:
                     logger.debug("Empty or invalid color palette")
                     return ""
+                
+                logger.debug(f"Parsed {len(colors)} colors from palette JSON")
+                logger.debug(f"Looking for color_selection: {color_selection}")
                 
                 # Try to find color by matching name, id, or position
                 for i, color in enumerate(colors):
@@ -137,6 +135,8 @@ class APZmediaColorPaletteSelector:
                     color_id = color.get("id", "").lower()
                     color_hex = color.get("hex", "")
                     
+                    logger.debug(f"Color {i}: name='{color_name}', id='{color_id}', hex='{color_hex}'")
+                    
                     if not color_hex:
                         continue
                     
@@ -144,17 +144,44 @@ class APZmediaColorPaletteSelector:
                     if (color_selection in color_name or 
                         color_selection in color_id or
                         self._matches_color_type(color_name, color_id, color_selection)):
+                        logger.debug(f"Found match for {color_selection}: {color_hex}")
                         return color_hex
                 
                 # If no specific match found, return color by position
+                logger.debug(f"Trying position-based matching for {color_selection}")
                 if color_selection == "first_color" and len(colors) > 0:
+                    logger.debug(f"Matched first_color: {colors[0].get('hex', '')}")
                     return colors[0].get("hex", "")
                 elif color_selection == "second_color" and len(colors) > 1:
+                    logger.debug(f"Matched second_color: {colors[1].get('hex', '')}")
                     return colors[1].get("hex", "")
                 elif color_selection == "third_color" and len(colors) > 2:
+                    logger.debug(f"Matched third_color: {colors[2].get('hex', '')}")
                     return colors[2].get("hex", "")
+                elif color_selection == "color_1" and len(colors) > 0:
+                    logger.debug(f"Matched color_1: {colors[0].get('hex', '')}")
+                    return colors[0].get("hex", "")
+                elif color_selection == "color_2" and len(colors) > 1:
+                    logger.debug(f"Matched color_2: {colors[1].get('hex', '')}")
+                    return colors[1].get("hex", "")
+                elif color_selection == "color_3" and len(colors) > 2:
+                    logger.debug(f"Matched color_3: {colors[2].get('hex', '')}")
+                    return colors[2].get("hex", "")
+                elif color_selection == "color_4" and len(colors) > 3:
+                    logger.debug(f"Matched color_4: {colors[3].get('hex', '')}")
+                    return colors[3].get("hex", "")
+                elif color_selection == "color_5" and len(colors) > 4:
+                    logger.debug(f"Matched color_5: {colors[4].get('hex', '')}")
+                    return colors[4].get("hex", "")
+                elif color_selection == "color_6" and len(colors) > 5:
+                    logger.debug(f"Matched color_6: {colors[5].get('hex', '')}")
+                    return colors[5].get("hex", "")
+                elif color_selection == "color_7" and len(colors) > 6:
+                    logger.debug(f"Matched color_7: {colors[6].get('hex', '')}")
+                    return colors[6].get("hex", "")
                 elif color_selection in ["primary", "secondary", "accent", "background", "text"]:
                     # Return first color as fallback for named selections
+                    logger.debug(f"Matched named color {color_selection}: {colors[0].get('hex', '')}")
                     return colors[0].get("hex", "")
                 
                 logger.debug(f"No color found for selection: {color_selection}")
@@ -199,29 +226,6 @@ class APZmediaColorPaletteSelector:
         
         return False
 
-    def _get_color_palette_json(self, brand_assets: Dict[str, Any]) -> str:
-        """
-        Get the full color palette JSON from brand assets.
-        
-        Args:
-            brand_assets: Dictionary containing brand assets
-            
-        Returns:
-            Color palette JSON string
-        """
-        try:
-            color_palette = brand_assets.get("color_palette", "[]")
-            if color_palette and isinstance(color_palette, str):
-                # Validate JSON format
-                try:
-                    json.loads(color_palette)
-                    return color_palette
-                except json.JSONDecodeError:
-                    return "[]"
-            return "[]"
-        except Exception as e:
-            logger.error(f"Error getting color palette: {e}")
-            return "[]"
 
     def _validate_color_hex(self, color_hex: str) -> bool:
         """

@@ -20,6 +20,7 @@ setup(
             'font_selector = nodes.font_selector_node:APZmediaFontSelector',
             'brand_asset_reader = nodes.brand_asset_reader_node:APZmediaBrandAssetReader',
             'color_palette_selector = nodes.color_palette_selector_node:APZmediaColorPaletteSelector',
+            'color_palette = nodes.color_palette_node:APZmediaColorPalette',
         ],
     },
     author="Pablo Apiolazza",

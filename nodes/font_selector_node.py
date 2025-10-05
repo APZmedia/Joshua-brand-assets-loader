@@ -21,20 +21,7 @@ class APZmediaFontSelector:
         return {
             "required": {
                 "brand_assets": ("BRAND_ASSETS", {}),
-                "font_selection": ("STRING", {
-                    "choices": [
-                        "font_primary",
-                        "font_primary_bold", 
-                        "font_primary_italic",
-                        "font_secondary",
-                        "font_secondary_bold",
-                        "font_secondary_italic",
-                        "font_tertiary",
-                        "font_tertiary_bold",
-                        "font_tertiary_italic"
-                    ],
-                    "default": "font_primary"
-                }),
+                "font_selection": (["font_primary", "font_primary_bold", "font_primary_italic", "font_secondary", "font_secondary_bold", "font_secondary_italic", "font_tertiary", "font_tertiary_bold", "font_tertiary_italic"], {"default": "font_primary"}),
             },
             "optional": {
                 "custom_font_path": ("STRING", {
@@ -45,8 +32,8 @@ class APZmediaFontSelector:
             }
         }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("font_path", "font_name", "font_info")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("font_path", "font_name", "font_info", "font_list")
     
     FUNCTION = "select_font"
     CATEGORY = "apzmedia_brand"
@@ -62,31 +49,34 @@ class APZmediaFontSelector:
             use_custom: Whether to use custom font path instead of brand assets
             
         Returns:
-            Tuple of (font_path, font_name, font_info)
+            Tuple of (font_path, font_name, font_info, font_list)
         """
         try:
+            # Generate font list for output
+            font_list = self._generate_font_list(brand_assets)
+            
             # If using custom font path, validate and return it
             if use_custom and custom_font_path:
                 if self._validate_font_path(custom_font_path):
                     font_name = self._extract_font_name(custom_font_path)
                     font_info = f"Custom font: {font_name}"
                     logger.info(f"Using custom font: {custom_font_path}")
-                    return (custom_font_path, font_name, font_info)
+                    return (custom_font_path, font_name, font_info, font_list)
                 else:
                     logger.warning(f"Invalid custom font path: {custom_font_path}")
-                    return self._return_default_font("Invalid custom font path")
+                    return self._return_default_font("Invalid custom font path", font_list)
             
             # Extract font path from brand assets
             font_path = self._get_font_from_assets(brand_assets, font_selection)
             
             if not font_path:
                 logger.warning(f"No font found for {font_selection}")
-                return self._return_default_font(f"No {font_selection} font available")
+                return self._return_default_font(f"No {font_selection} font available", font_list)
             
             # Validate the font path
             if not self._validate_font_path(font_path):
                 logger.warning(f"Invalid font path: {font_path}")
-                return self._return_default_font("Invalid font path")
+                return self._return_default_font("Invalid font path", font_list)
             
             # Extract font name and create info
             font_name = self._extract_font_name(font_path)
@@ -95,11 +85,11 @@ class APZmediaFontSelector:
             font_info = f"{readable_name}: {font_name}"
             
             logger.info(f"Selected font: {font_path} ({font_name})")
-            return (font_path, font_name, font_info)
+            return (font_path, font_name, font_info, font_list)
             
         except Exception as e:
             logger.error(f"Error selecting font: {e}")
-            return self._return_default_font(f"Error: {str(e)}")
+            return self._return_default_font(f"Error: {str(e)}", "")
 
     def _get_font_from_assets(self, brand_assets: Dict[str, Any], font_selection: str) -> str:
         """
@@ -191,17 +181,52 @@ class APZmediaFontSelector:
             logger.error(f"Error extracting font name from {font_path}: {e}")
             return "Unknown Font"
 
-    def _return_default_font(self, error_message: str) -> tuple:
+    def _return_default_font(self, error_message: str, font_list: str = "") -> tuple:
         """
         Return default values when font selection fails.
         
         Args:
             error_message: Error message to include in font_info
+            font_list: Font list string to return
             
         Returns:
-            Tuple of (font_path, font_name, font_info)
+            Tuple of (font_path, font_name, font_info, font_list)
         """
-        return ("", "No Font", error_message)
+        return ("", "No Font", error_message, font_list)
+
+    def _generate_font_list(self, brand_assets: Dict[str, Any]) -> str:
+        """
+        Generate a formatted list of available fonts from brand assets.
+        
+        Args:
+            brand_assets: Dictionary containing brand assets
+            
+        Returns:
+            Formatted string list of available fonts
+        """
+        try:
+            font_list = []
+            font_keys = [
+                "font_primary", "font_primary_bold", "font_primary_italic",
+                "font_secondary", "font_secondary_bold", "font_secondary_italic", 
+                "font_tertiary", "font_tertiary_bold", "font_tertiary_italic"
+            ]
+            
+            for key in font_keys:
+                font_path = brand_assets.get(key, "")
+                if font_path and self._validate_font_path(font_path):
+                    font_name = self._extract_font_name(font_path)
+                    readable_key = key.replace("font_", "").replace("_", " ").title()
+                    font_list.append(f"• {readable_key}: {font_name}")
+            
+            if font_list:
+                return "Available Fonts:\n" + "\n".join(font_list)
+            else:
+                return "No valid fonts found in brand assets"
+                
+        except Exception as e:
+            logger.error(f"Error generating font list: {e}")
+            return f"Error generating font list: {str(e)}"
 
 # Node mappings for ComfyUI
 NODE_CLASS_MAPPINGS = {
