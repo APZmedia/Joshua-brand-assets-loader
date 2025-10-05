@@ -21,13 +21,19 @@ class APZmediaFontSelector:
         return {
             "required": {
                 "brand_assets": ("BRAND_ASSETS", {}),
-                "font_type": ("STRING", {
-                    "choices": ["primary", "secondary", "tertiary"],
-                    "default": "primary"
-                }),
-                "font_variant": ("STRING", {
-                    "choices": ["regular", "bold", "italic"],
-                    "default": "regular"
+                "font_selection": ("STRING", {
+                    "choices": [
+                        "font_primary",
+                        "font_primary_bold", 
+                        "font_primary_italic",
+                        "font_secondary",
+                        "font_secondary_bold",
+                        "font_secondary_italic",
+                        "font_tertiary",
+                        "font_tertiary_bold",
+                        "font_tertiary_italic"
+                    ],
+                    "default": "font_primary"
                 }),
             },
             "optional": {
@@ -45,14 +51,13 @@ class APZmediaFontSelector:
     FUNCTION = "select_font"
     CATEGORY = "apzmedia_brand"
 
-    def select_font(self, brand_assets, font_type, font_variant, custom_font_path="", use_custom=False):
+    def select_font(self, brand_assets, font_selection, custom_font_path="", use_custom=False):
         """
         Select and return the appropriate font path from brand assets.
         
         Args:
             brand_assets: Dictionary containing all brand assets
-            font_type: Type of font (primary, secondary, tertiary)
-            font_variant: Font variant (regular, bold, italic)
+            font_selection: Selected font key (font_primary, font_primary_bold, etc.)
             custom_font_path: Custom font path override
             use_custom: Whether to use custom font path instead of brand assets
             
@@ -72,11 +77,11 @@ class APZmediaFontSelector:
                     return self._return_default_font("Invalid custom font path")
             
             # Extract font path from brand assets
-            font_path = self._get_font_from_assets(brand_assets, font_type, font_variant)
+            font_path = self._get_font_from_assets(brand_assets, font_selection)
             
             if not font_path:
-                logger.warning(f"No font found for {font_type}_{font_variant}")
-                return self._return_default_font(f"No {font_type} {font_variant} font available")
+                logger.warning(f"No font found for {font_selection}")
+                return self._return_default_font(f"No {font_selection} font available")
             
             # Validate the font path
             if not self._validate_font_path(font_path):
@@ -85,7 +90,9 @@ class APZmediaFontSelector:
             
             # Extract font name and create info
             font_name = self._extract_font_name(font_path)
-            font_info = f"{font_type.title()} {font_variant.title()}: {font_name}"
+            # Convert font_selection to readable format (e.g., font_primary_bold -> Primary Bold)
+            readable_name = font_selection.replace("font_", "").replace("_", " ").title()
+            font_info = f"{readable_name}: {font_name}"
             
             logger.info(f"Selected font: {font_path} ({font_name})")
             return (font_path, font_name, font_info)
@@ -94,37 +101,25 @@ class APZmediaFontSelector:
             logger.error(f"Error selecting font: {e}")
             return self._return_default_font(f"Error: {str(e)}")
 
-    def _get_font_from_assets(self, brand_assets: Dict[str, Any], font_type: str, font_variant: str) -> str:
+    def _get_font_from_assets(self, brand_assets: Dict[str, Any], font_selection: str) -> str:
         """
         Extract font path from brand assets dictionary.
         
         Args:
             brand_assets: Dictionary containing brand assets
-            font_type: Type of font (primary, secondary, tertiary)
-            font_variant: Font variant (regular, bold, italic)
+            font_selection: Selected font key (font_primary, font_primary_bold, etc.)
             
         Returns:
             Font path string or empty string if not found
         """
         try:
-            # Handle different font variants
-            if font_variant == "regular":
-                font_key = f"font_{font_type}"
-            elif font_variant == "bold":
-                font_key = f"font_{font_type}_bold"
-            elif font_variant == "italic":
-                font_key = f"font_{font_type}_italic"
-            else:
-                logger.warning(f"Unknown font variant: {font_variant}")
-                return ""
-            
-            # Get font path from assets
-            font_path = brand_assets.get(font_key, "")
+            # Get font path from assets using the direct font key
+            font_path = brand_assets.get(font_selection, "")
             
             if font_path and isinstance(font_path, str):
                 return font_path
             else:
-                logger.debug(f"Font key '{font_key}' not found or empty in brand assets")
+                logger.debug(f"Font key '{font_selection}' not found or empty in brand assets")
                 return ""
                 
         except Exception as e:

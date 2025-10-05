@@ -72,8 +72,6 @@ class APZmediaBrandAssetLoader:
                 "font_tertiary_bold": ("STRING", {"default": "", "multiline": False}),
                 "font_tertiary_italic": ("STRING", {"default": "", "multiline": False}),
                 
-                # Color Palette
-                "color_palette": ("STRING", {"default": "", "multiline": True}),
             }
         }
 
@@ -81,7 +79,6 @@ class APZmediaBrandAssetLoader:
         "BRAND_ASSETS",
         "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK", "IMAGE", "MASK",
         "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING",
-        "STRING",
         "STRING",
         "STRING"
     )
@@ -92,7 +89,7 @@ class APZmediaBrandAssetLoader:
         "logo_icon", "logo_icon_mask",
         "font_primary", "font_primary_bold", "font_primary_italic", "font_secondary", "font_secondary_bold", "font_secondary_italic", 
         "font_tertiary", "font_tertiary_bold", "font_tertiary_italic",
-        "color_palette", "brand_name", "status_message"
+        "brand_name", "status_message"
     )
 
     FUNCTION = "load_brand_assets"
@@ -103,7 +100,7 @@ class APZmediaBrandAssetLoader:
                          logo_horizontal_color="", logo_horizontal_mono="", 
                          logo_icon="", font_primary="", font_primary_bold="", font_primary_italic="",
                          font_secondary="", font_secondary_bold="", font_secondary_italic="",
-                         font_tertiary="", font_tertiary_bold="", font_tertiary_italic="", color_palette="",
+                         font_tertiary="", font_tertiary_bold="", font_tertiary_italic="",
                          use_aria2c=True, download_timeout=30):
         """
         Load all brand assets either manually or via API.
@@ -129,7 +126,7 @@ class APZmediaBrandAssetLoader:
                     logo_horizontal_color, logo_horizontal_mono,
                     logo_icon, font_primary, font_primary_bold, font_primary_italic,
                     font_secondary, font_secondary_bold, font_secondary_italic,
-                    font_tertiary, font_tertiary_bold, font_tertiary_italic, color_palette,
+                    font_tertiary, font_tertiary_bold, font_tertiary_italic,
                     use_aria2c, download_timeout
                 )
         except Exception as e:
@@ -308,7 +305,7 @@ class APZmediaBrandAssetLoader:
                     logo_horizontal_color, logo_horizontal_mono, 
                     logo_icon, font_primary, font_primary_bold, font_primary_italic,
                     font_secondary, font_secondary_bold, font_secondary_italic,
-                    font_tertiary, font_tertiary_bold, font_tertiary_italic, color_palette,
+                    font_tertiary, font_tertiary_bold, font_tertiary_italic,
                     use_aria2c=True, download_timeout=30) -> Tuple:
         """Load brand assets from manual file paths."""
         try:
@@ -330,22 +327,6 @@ class APZmediaBrandAssetLoader:
             tertiary_bold_font_path = self._process_font_input(font_tertiary_bold, use_aria2c, download_timeout)
             tertiary_italic_font_path = self._process_font_input(font_tertiary_italic, use_aria2c, download_timeout)
 
-            # Validate color palette JSON
-            if color_palette:
-                try:
-                    parsed = json.loads(color_palette)
-                    # Validate color palette structure
-                    if isinstance(parsed, list):
-                        for color in parsed:
-                            if not isinstance(color, dict) or 'hex' not in color:
-                                color_palette = self._get_default_color_palette()
-                                break
-                    else:
-                        color_palette = self._get_default_color_palette()
-                except json.JSONDecodeError:
-                    color_palette = self._get_default_color_palette()
-            else:
-                color_palette = self._get_default_color_palette()
 
             brand_name = "Manual Brand Assets"
             status_message = "Successfully loaded manual brand assets"
@@ -371,7 +352,6 @@ class APZmediaBrandAssetLoader:
                 "font_tertiary": tertiary_font_path,
                 "font_tertiary_bold": tertiary_bold_font_path,
                 "font_tertiary_italic": tertiary_italic_font_path,
-                "color_palette": color_palette,
                 "brand_name": brand_name,
                 "status_message": status_message
             }
@@ -384,7 +364,7 @@ class APZmediaBrandAssetLoader:
                 logo_icon_img, logo_icon_mask, primary_font_path, primary_bold_font_path, primary_italic_font_path,
                 secondary_font_path, secondary_bold_font_path, secondary_italic_font_path,
                 tertiary_font_path, tertiary_bold_font_path, tertiary_italic_font_path,
-                color_palette, brand_name, status_message
+                brand_name, status_message
             )
         except Exception:
             return self._return_defaults("Manual Loading Error: Failed to load assets")
@@ -770,36 +750,6 @@ class APZmediaBrandAssetLoader:
         """Create an empty mask tensor in (1, H, W) format (all zeros, i.e., fully transparent)."""
         return torch.zeros((1, 64, 64), dtype=torch.float32)
 
-    def _get_default_color_palette(self) -> str:
-        """Get default color palette JSON string."""
-        default_palette = [
-            {
-                "name": "Primary Blue",
-                "hex": "#0066CC",
-                "id": "primary-blue"
-            },
-            {
-                "name": "Secondary Gray", 
-                "hex": "#666666",
-                "id": "secondary-gray"
-            },
-            {
-                "name": "Accent Orange",
-                "hex": "#FF6600", 
-                "id": "accent-orange"
-            },
-            {
-                "name": "Background White",
-                "hex": "#FFFFFF",
-                "id": "background-white"
-            },
-            {
-                "name": "Text Black",
-                "hex": "#000000",
-                "id": "text-black"
-            }
-        ]
-        return json.dumps(default_palette, indent=2)
 
     def _process_logo_image(self, image: Image.Image) -> Tuple[torch.Tensor, torch.Tensor]:
         """Process logo image to extract RGB and alpha mask.
@@ -929,7 +879,6 @@ class APZmediaBrandAssetLoader:
             "font_tertiary": "",
             "font_tertiary_bold": "",
             "font_tertiary_italic": "",
-            "color_palette": self._get_default_color_palette(),
             "brand_name": "Unknown Brand",
             "status_message": status_message
         }
@@ -939,7 +888,6 @@ class APZmediaBrandAssetLoader:
             empty_logo, empty_mask, empty_logo, empty_mask, empty_logo, empty_mask,
             empty_logo, empty_mask, empty_logo, empty_mask,
             "", "", "", "", "", "", "", "", "",
-            self._get_default_color_palette(),
             "Unknown Brand",
             status_message
         )
