@@ -55,20 +55,214 @@ def spectral_residual_saliency(gray: np.ndarray) -> np.ndarray:
     from scipy.ndimage import gaussian_filter
     S = gaussian_filter(S, sigma=1.0)
     
-    # Apply thresholding to focus on high-saliency regions
-    # Remove low-saliency areas more aggressively
-    threshold = np.percentile(S, 70)  # Keep only top 30% of saliency values
-    S = np.where(S > threshold, S, 0)
-    
-    # Normalize
+    # Normalize to [0,1]
     S -= S.min()
     if S.max() > 0:
         S /= S.max()
     
-    # Apply additional smoothing to create more focused regions
-    S = gaussian_filter(S, sigma=0.5)
-    
     return S.astype(np.float32)
+
+
+def adaptive_threshold_saliency(saliency_map: np.ndarray, method: str = "otsu", percentile: float = 0.9) -> np.ndarray:
+    """
+    Apply adaptive thresholding to saliency map.
+    
+    Args:
+        saliency_map: Normalized saliency map [0,1]
+        method: "otsu", "percentile", or "adaptive"
+        percentile: For percentile method, keep top (1-percentile) values
+    
+    Returns:
+        Binary thresholded saliency map
+    """
+    if method == "otsu":
+        # Otsu's method for automatic threshold selection
+        from skimage.filters import threshold_otsu
+        try:
+            threshold = threshold_otsu(saliency_map)
+            return (saliency_map > threshold).astype(np.float32)
+        except:
+            # Fallback to percentile if Otsu fails
+            threshold = np.percentile(saliency_map, (1 - percentile) * 100)
+            return (saliency_map > threshold).astype(np.float32)
+    
+    elif method == "percentile":
+        # Percentile-based thresholding
+        threshold = np.percentile(saliency_map, (1 - percentile) * 100)
+        return (saliency_map > threshold).astype(np.float32)
+    
+    elif method == "adaptive":
+        # Adaptive threshold based on local statistics
+        mean_saliency = np.mean(saliency_map)
+        std_saliency = np.std(saliency_map)
+        threshold = mean_saliency + 0.5 * std_saliency
+        return (saliency_map > threshold).astype(np.float32)
+    
+    else:
+        # Default to percentile
+        threshold = np.percentile(saliency_map, (1 - percentile) * 100)
+        return (saliency_map > threshold).astype(np.float32)
+
+
+def find_saliency_blobs(saliency_map: np.ndarray, min_area: int = 100, connectivity: int = 2) -> list:
+    """
+    Find connected components (blobs) in saliency map.
+    
+    Args:
+        saliency_map: Binary saliency map
+        min_area: Minimum area for a blob to be considered
+        connectivity: Connectivity for blob detection (1=4-connected, 2=8-connected)
+    
+    Returns:
+        List of blob dictionaries with properties: centroid, area, avg_saliency, bbox
+    """
+    from scipy.ndimage import label, center_of_mass
+    from skimage.measure import regionprops
+    
+    # Find connected components
+    labeled_array, num_features = label(saliency_map, structure=np.ones((3, 3)) if connectivity == 2 else None)
+    
+    blobs = []
+    if num_features == 0:
+        return blobs
+    
+    # Get region properties
+    regions = regionprops(labeled_array, intensity_image=saliency_map)
+    
+    for region in regions:
+        if region.area >= min_area:
+            blob_info = {
+                'centroid': region.centroid,  # (y, x) format
+                'area': region.area,
+                'avg_saliency': region.mean_intensity,
+                'bbox': region.bbox,  # (min_row, min_col, max_row, max_col)
+                'label': region.label
+            }
+            blobs.append(blob_info)
+    
+    return blobs
+
+
+def select_top_pois(blobs: list, max_pois: int = 3, selection_method: str = "saliency") -> list:
+    """
+    Select top N POI blobs based on selection criteria.
+    
+    Args:
+        blobs: List of blob dictionaries
+        max_pois: Maximum number of POIs to select
+        selection_method: "saliency", "area", or "combined"
+    
+    Returns:
+        List of selected POI blobs
+    """
+    if not blobs:
+        return []
+    
+    if selection_method == "saliency":
+        # Sort by average saliency (descending)
+        sorted_blobs = sorted(blobs, key=lambda x: x['avg_saliency'], reverse=True)
+    elif selection_method == "area":
+        # Sort by area (descending)
+        sorted_blobs = sorted(blobs, key=lambda x: x['area'], reverse=True)
+    elif selection_method == "combined":
+        # Combined score: saliency * sqrt(area)
+        for blob in blobs:
+            blob['combined_score'] = blob['avg_saliency'] * np.sqrt(blob['area'])
+        sorted_blobs = sorted(blobs, key=lambda x: x['combined_score'], reverse=True)
+    else:
+        sorted_blobs = blobs
+    
+    return sorted_blobs[:max_pois]
+
+
+def compute_poi_centroid(selected_pois: list, method: str = "weighted") -> tuple:
+    """
+    Compute final POI centroid from selected blobs.
+    
+    Args:
+        selected_pois: List of selected POI blobs
+        method: "weighted", "largest", or "center"
+    
+    Returns:
+        (x, y) coordinates of final POI point
+    """
+    if not selected_pois:
+        return (0, 0)
+    
+    if method == "weighted":
+        # Weighted average based on saliency
+        total_weight = sum(poi['avg_saliency'] for poi in selected_pois)
+        if total_weight > 0:
+            weighted_x = sum(poi['centroid'][1] * poi['avg_saliency'] for poi in selected_pois) / total_weight
+            weighted_y = sum(poi['centroid'][0] * poi['avg_saliency'] for poi in selected_pois) / total_weight
+            return (int(weighted_x), int(weighted_y))
+        else:
+            # Fallback to simple average
+            avg_x = sum(poi['centroid'][1] for poi in selected_pois) / len(selected_pois)
+            avg_y = sum(poi['centroid'][0] for poi in selected_pois) / len(selected_pois)
+            return (int(avg_x), int(avg_y))
+    
+    elif method == "largest":
+        # Use centroid of largest blob
+        largest_poi = max(selected_pois, key=lambda x: x['area'])
+        return (int(largest_poi['centroid'][1]), int(largest_poi['centroid'][0]))
+    
+    elif method == "center":
+        # Simple average of all centroids
+        avg_x = sum(poi['centroid'][1] for poi in selected_pois) / len(selected_pois)
+        avg_y = sum(poi['centroid'][0] for poi in selected_pois) / len(selected_pois)
+        return (int(avg_x), int(avg_y))
+    
+    else:
+        # Default to weighted
+        return compute_poi_centroid(selected_pois, "weighted")
+
+
+def enhanced_poi_detection(gray: np.ndarray, 
+                          threshold_method: str = "otsu",
+                          threshold_percentile: float = 0.9,
+                          min_blob_area: int = 100,
+                          max_pois: int = 3,
+                          poi_selection: str = "saliency",
+                          centroid_method: str = "weighted") -> tuple:
+    """
+    Enhanced POI detection using post-processed saliency analysis.
+    
+    Args:
+        gray: Input grayscale image
+        threshold_method: "otsu", "percentile", or "adaptive"
+        threshold_percentile: For percentile thresholding
+        min_blob_area: Minimum area for blob detection
+        max_pois: Maximum number of POIs to consider
+        poi_selection: "saliency", "area", or "combined"
+        centroid_method: "weighted", "largest", or "center"
+    
+    Returns:
+        (poi_x, poi_y, saliency_map, blob_info)
+    """
+    # Step 1: Generate saliency map
+    saliency_map = spectral_residual_saliency(gray)
+    
+    # Step 2: Apply adaptive thresholding
+    thresholded_saliency = adaptive_threshold_saliency(saliency_map, threshold_method, threshold_percentile)
+    
+    # Step 3: Find connected components (blobs)
+    blobs = find_saliency_blobs(thresholded_saliency, min_blob_area)
+    
+    # Step 4: Select top POIs
+    selected_pois = select_top_pois(blobs, max_pois, poi_selection)
+    
+    # Step 5: Compute final POI centroid
+    poi_x, poi_y = compute_poi_centroid(selected_pois, centroid_method)
+    
+    # Prepare blob info for debugging/visualization
+    blob_info = {
+        'total_blobs': len(blobs),
+        'selected_blobs': len(selected_pois),
+        'blobs': selected_pois
+    }
+    
+    return poi_x, poi_y, saliency_map, blob_info
 
 
 def _weighted_percentile_indices(weights_1d: np.ndarray, lower=0.05, upper=0.95):
@@ -371,11 +565,12 @@ def _draw_poi_overlay(img: np.ndarray, x0: int, y0: int, x1: int, y1: int, color
     overlay_img = img.copy()
     h, w = overlay_img.shape[:2]
     
-    # Ensure coordinates are within bounds
-    x0 = max(0, min(x0, w-1))
-    y0 = max(0, min(y0, h-1))
-    x1 = max(x0+1, min(x1, w))
-    y1 = max(y0+1, min(y1, h))
+    # Ensure coordinates are within bounds and convert to integers
+    x0 = int(max(0, min(x0, w-1)))
+    y0 = int(max(0, min(y0, h-1)))
+    x1 = int(max(x0+1, min(x1, w)))
+    y1 = int(max(y0+1, min(y1, h)))
+    thickness = int(thickness)
     
     # Draw rectangle outline
     if len(overlay_img.shape) == 3:
@@ -523,90 +718,78 @@ class POISmartCrop:
             else:
                 gray = gray[..., 0]
 
-            # saliency
-            S = spectral_residual_saliency(gray)
-            
-            # Check if saliency is too uniform (indicating poor detection)
-            saliency_std = np.std(S)
-            saliency_range = np.max(S) - np.min(S)
-            
-            # If saliency is too uniform, try edge-based fallback
-            if saliency_std < 0.01 or saliency_range < 0.1:
-                if _HAS_CV2:
-                    # Use edge detection as fallback
-                    edges = cv2.Canny(gray, 50, 150)
-                    # Convert edges to saliency-like map
-                    S = edges.astype(np.float32) / 255.0
-                    # Apply gaussian blur to make it more like saliency
-                    S = cv2.GaussianBlur(S, (15, 15), 0)
-                    S = S / (S.max() + 1e-8)
+            # Enhanced POI detection with post-processing
+            try:
+                poi_x, poi_y, S, blob_info = enhanced_poi_detection(
+                    gray,
+                    threshold_method="otsu",  # Default to Otsu for best results
+                    threshold_percentile=0.9,  # Keep top 10% of saliency values
+                    min_blob_area=100,  # Minimum blob area
+                    max_pois=3,  # Consider up to 3 POIs
+                    poi_selection="saliency",  # Sort by saliency
+                    centroid_method="weighted"  # Weighted average
+                )
+                
+                # Check if we found valid POIs
+                if blob_info['selected_blobs'] == 0:
+                    # Fallback to center if no POIs found
+                    poi_x, poi_y = w // 2, h // 2
+                    print(f"Warning: No POIs detected, using center ({poi_x}, {poi_y})")
                 else:
-                    # Simple gradient-based fallback
-                    from scipy.ndimage import sobel
-                    S = np.sqrt(sobel(gray, axis=0)**2 + sobel(gray, axis=1)**2)
-                    S = S / (S.max() + 1e-8)
+                    print(f"Found {blob_info['selected_blobs']} POIs from {blob_info['total_blobs']} blobs")
+                    
+            except Exception as e:
+                print(f"Enhanced POI detection failed: {e}, falling back to original method")
+                # Fallback to original spectral residual method
+                S = spectral_residual_saliency(gray)
+                
+                # Use original focused POI point method as fallback
+                x0_orig, y0_orig, x1_orig, y1_orig = _compute_focused_poi_point(S, poi_size_percent, w, h)
+                poi_x = (x0_orig + x1_orig) // 2
+                poi_y = (y0_orig + y1_orig) // 2
             
             # Convert saliency map to visual image
             saliency_img = _saliency_to_image(S, colormap="hot")
 
             # optional GrabCut refinement
             if refine_with_grabcut_bool and _HAS_CV2:
-                x0_s, y0_s, x1_s, y1_s = _compute_median_box_from_saliency(S)
-                rect = (x0_s, y0_s, max(1, x1_s - x0_s), max(1, y1_s - y0_s))
+                # Use POI coordinates for GrabCut initialization
+                poi_size = max(10, min(w, h) // 20)  # Adaptive POI size
+                rect = (max(0, poi_x - poi_size), max(0, poi_y - poi_size), 
+                       min(w, poi_x + poi_size), min(h, poi_y + poi_size))
                 gc_mask = _refine_with_grabcut(cv2.cvtColor(np_img, cv2.COLOR_RGB2BGR), rect)
                 if gc_mask is not None:
                     S = (gc_mask.astype(np.float32))
                     if S.max() > 0:
                         S = S / S.max()
 
-            # Create focused POI point instead of large box
-            x0, y0, x1, y1 = _compute_focused_poi_point(S, poi_size_percent, w, h)
-
-            # if saliency is too flat, optionally fallback to center crop
-            if float(S.sum()) < 1e-6 and fallback_center_crop_bool:
-                # center box with aspect
-                if w / h < target_aspect:
-                    # image narrower than target -> height drives
-                    bw = w
-                    bh = int(round(w / target_aspect))
-                else:
-                    bh = h
-                    bw = int(round(h * target_aspect))
-                cx = w // 2
-                cy = h // 2
-                x0 = max(0, cx - bw // 2)
-                x1 = min(w, x0 + bw)
-                y0 = max(0, cy - bh // 2)
-                y1 = min(h, y0 + bh)
-
-            # Apply centering preference to the POI point first
-            poi_center_x = (x0 + x1) / 2
-            poi_center_y = (y0 + y1) / 2
-            
-            # Calculate target center based on preference
+            # Apply centering preference to the detected POI coordinates
             if centering_preference == "left":
-                target_center_x = width / 2  # Left side of target
+                # Move POI to left side of target area
+                target_poi_x = width / 2  # Left side of target crop area
             elif centering_preference == "right":
-                target_center_x = w - width / 2  # Right side of target
+                # Move POI to right side of target area  
+                target_poi_x = w - width / 2  # Right side of target crop area
             else:  # center
-                target_center_x = w / 2  # Center of image
+                # Keep POI at its detected position (no adjustment needed)
+                target_poi_x = poi_x
             
-            target_center_y = h / 2  # Always center vertically
+            # Always center vertically
+            target_poi_y = poi_y
             
             # Calculate offset needed to move POI to target position
-            offset_x = target_center_x - poi_center_x
-            offset_y = target_center_y - poi_center_y
+            offset_x = target_poi_x - poi_x
+            offset_y = target_poi_y - poi_y
             
-            # Apply offset to POI point
-            x0 = max(0, int(x0 + offset_x))
-            y0 = max(0, int(y0 + offset_y))
-            x1 = min(w, int(x1 + offset_x))
-            y1 = min(h, int(y1 + offset_y))
+            # Apply offset to POI coordinates
+            adjusted_poi_x = int(max(0, min(w, poi_x + offset_x)))
+            adjusted_poi_y = int(max(0, min(h, poi_y + offset_y)))
             
-            # Now create the final crop box with target aspect ratio
-            # Use the POI point as the center for the aspect ratio box
-            poi_center_x = (x0 + x1) / 2
-            poi_center_y = (y0 + y1) / 2
+            # if saliency is too flat, optionally fallback to center crop
+            if float(S.sum()) < 1e-6 and fallback_center_crop_bool:
+                # Use center of image as POI
+                adjusted_poi_x = w // 2
+                adjusted_poi_y = h // 2
             
             # Calculate crop box dimensions with target aspect ratio
             if w / h < target_aspect:
@@ -618,9 +801,9 @@ class POISmartCrop:
                 crop_w = w
                 crop_h = int(w / target_aspect)
             
-            # Center the crop box on the POI point
-            x0 = max(0, int(poi_center_x - crop_w / 2))
-            y0 = max(0, int(poi_center_y - crop_h / 2))
+            # Center the crop box on the adjusted POI point
+            x0 = max(0, int(adjusted_poi_x - crop_w / 2))
+            y0 = max(0, int(adjusted_poi_y - crop_h / 2))
             x1 = min(w, x0 + crop_w)
             y1 = min(h, y0 + crop_h)
             
@@ -639,33 +822,61 @@ class POISmartCrop:
             
             # Apply debug overlay if enabled
             if show_overlay_bool:
-                # Draw overlay on the original image to show POI detection
-                # Show the small focused POI point
-                poi_x0, poi_y0, poi_x1, poi_y1 = _compute_focused_poi_point(S, poi_size_percent, w, h)
-                debug_img = _draw_poi_overlay(np_img, poi_x0, poi_y0, poi_x1, poi_y1, color=(255, 0, 0), thickness=3)
+                # Create a copy of the original image for overlay
+                debug_img = np_img.copy()
                 
-                # Draw the final crop box on the original image
+                # Draw overlay on the original image to show POI detection
+                # Show the original detected POI point (red)
+                poi_size = max(1, int(min(w, h) * poi_size_percent / 100.0))
+                original_poi_x0 = max(0, int(poi_x - poi_size // 2))
+                original_poi_y0 = max(0, int(poi_y - poi_size // 2))
+                original_poi_x1 = min(w, int(poi_x + poi_size // 2))
+                original_poi_y1 = min(h, int(poi_y + poi_size // 2))
+                
+                # Show the adjusted POI point (blue)
+                adjusted_poi_x0 = max(0, int(adjusted_poi_x - poi_size // 2))
+                adjusted_poi_y0 = max(0, int(adjusted_poi_y - poi_size // 2))
+                adjusted_poi_x1 = min(w, int(adjusted_poi_x + poi_size // 2))
+                adjusted_poi_y1 = min(h, int(adjusted_poi_y + poi_size // 2))
+                
+                # Draw overlays on debug image
+                debug_img = _draw_poi_overlay(debug_img, original_poi_x0, original_poi_y0, original_poi_x1, original_poi_y1, color=(255, 0, 0), thickness=3)
+                debug_img = _draw_poi_overlay(debug_img, adjusted_poi_x0, adjusted_poi_y0, adjusted_poi_x1, adjusted_poi_y1, color=(0, 0, 255), thickness=3)
+                
+                # Draw the final crop box on the original image (green)
                 debug_img = _draw_poi_overlay(debug_img, x0, y0, x1, y1, color=(0, 255, 0), thickness=2)
+                
+                # Update the crop to use the debug image with overlays
+                crop = debug_img[y0:y1, x0:x1, :]
                 
                 # Draw a small indicator on the cropped image to show where the POI is
                 crop_h, crop_w = crop.shape[:2]
                 
-                # Calculate where the POI point is within the crop
-                poi_center_x = (poi_x0 + poi_x1) / 2
-                poi_center_y = (poi_y0 + poi_y1) / 2
-                
-                # Convert to crop coordinates
-                crop_poi_x = int((poi_center_x - x0) * crop_w / (x1 - x0))
-                crop_poi_y = int((poi_center_y - y0) * crop_h / (y1 - y0))
-                
-                # Draw a small cross to mark the POI center
-                cross_size = max(3, min(crop_w, crop_h) // 20)
-                if 0 <= crop_poi_x < crop_w and 0 <= crop_poi_y < crop_h:
-                    # Draw cross
-                    crop[max(0, crop_poi_y-cross_size):min(crop_h, crop_poi_y+cross_size+1), 
-                         max(0, crop_poi_x-1):min(crop_w, crop_poi_x+2)] = [0, 255, 0]
-                    crop[max(0, crop_poi_y-1):min(crop_h, crop_poi_y+2), 
-                         max(0, crop_poi_x-cross_size):min(crop_w, crop_poi_x+cross_size+1)] = [0, 255, 0]
+                # Calculate where the adjusted POI point is within the crop
+                # Ensure the POI is within the crop bounds
+                if x0 <= adjusted_poi_x < x1 and y0 <= adjusted_poi_y < y1:
+                    crop_poi_x = int((adjusted_poi_x - x0) * crop_w / (x1 - x0))
+                    crop_poi_y = int((adjusted_poi_y - y0) * crop_h / (y1 - y0))
+                    
+                    # Draw a small cross to mark the POI center
+                    cross_size = max(3, min(crop_w, crop_h) // 20)
+                    if 0 <= crop_poi_x < crop_w and 0 <= crop_poi_y < crop_h:
+                        # Draw cross
+                        crop[max(0, crop_poi_y-cross_size):min(crop_h, crop_poi_y+cross_size+1), 
+                             max(0, crop_poi_x-1):min(crop_w, crop_poi_x+2)] = [0, 255, 0]
+                        crop[max(0, crop_poi_y-1):min(crop_h, crop_poi_y+2), 
+                             max(0, crop_poi_x-cross_size):min(crop_w, crop_poi_x+cross_size+1)] = [0, 255, 0]
+                else:
+                    # POI is outside crop bounds, draw a marker at the edge
+                    edge_marker_size = max(2, min(crop_w, crop_h) // 30)
+                    if adjusted_poi_x < x0:  # POI is to the left
+                        crop[:, :edge_marker_size] = [255, 0, 0]  # Red left edge
+                    elif adjusted_poi_x >= x1:  # POI is to the right
+                        crop[:, -edge_marker_size:] = [255, 0, 0]  # Red right edge
+                    if adjusted_poi_y < y0:  # POI is above
+                        crop[:edge_marker_size, :] = [255, 0, 0]  # Red top edge
+                    elif adjusted_poi_y >= y1:  # POI is below
+                        crop[-edge_marker_size:, :] = [255, 0, 0]  # Red bottom edge
 
             # Apply resize method - always maintain aspect ratio
             crop_h, crop_w = crop.shape[:2]
