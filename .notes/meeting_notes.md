@@ -327,6 +327,48 @@
 
 ---
 
+## [2025-01-27] Font Selector Signed URL Fix
+
+**User:** It looks like when the brand assets loader font field is a signed url the font selector is not properly passing it. Can you check this?
+
+**Gemini:** Successfully identified and fixed the signed URL handling issue in the font selector:
+
+### 🔍 **Root Cause Analysis:**
+1. **Brand Asset Loader**: Properly handles signed URLs by downloading fonts and returning local file paths
+2. **Font Selector**: Only validated local file paths using `os.path.exists()`, couldn't handle URLs or signed URLs
+3. **Issue**: When brand assets contained signed URLs, font selector couldn't process them
+
+### ✅ **Fix Implemented:**
+1. **Enhanced URL Detection**: Added comprehensive signed URL pattern recognition including:
+   - AWS S3 signed URLs (`x-amz-*` parameters)
+   - Google Cloud Storage signed URLs (`googleaccessid`, `expires`, `signature`)
+   - Azure Blob Storage signed URLs (`sv`, `sr`, `sig`, `st`, `se`)
+   - Generic signed URL patterns (`signature`, `token`, `expires`, `auth`, `key`)
+
+2. **URL Validation**: Added security-focused URL validation with protocol and pattern checking
+
+3. **Font Downloading**: Implemented font download capability for URLs with proper error handling
+
+4. **Enhanced Font Processing**: Updated font selector to:
+   - Detect URLs vs local paths
+   - Download fonts from URLs when needed
+   - Extract font names from URLs
+   - Handle both local and remote fonts seamlessly
+
+### 🧪 **Testing Results:**
+- ✅ All signed URL patterns detected correctly
+- ✅ URL validation working with security checks
+- ✅ Font name extraction from URLs functioning
+- ✅ Mixed local/remote font handling working
+- ✅ Error handling for invalid URLs working
+
+### 📊 **Impact:**
+- **Before**: Font selector failed with signed URLs from brand assets
+- **After**: Font selector seamlessly handles both local fonts and signed URLs
+- **Compatibility**: Maintains full backward compatibility with existing local font workflows
+
+---
+
 ## [Next Session] Testing and Optimization
 
 **Planned Discussion:**

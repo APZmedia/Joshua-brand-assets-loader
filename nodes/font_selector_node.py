@@ -1,5 +1,10 @@
 import os
 import logging
+import requests
+import tempfile
+import time
+import re
+import urllib.parse
 from typing import Dict, Any, Optional
 from pathlib import Path
 
@@ -73,6 +78,17 @@ class APZmediaFontSelector:
                 logger.warning(f"No font found for {font_selection}")
                 return self._return_default_font(f"No {font_selection} font available", font_list)
             
+            # Check if it's a URL (including signed URLs) and download if needed
+            if self._is_url(font_path):
+                logger.info(f"Font is a URL, downloading: {font_path}")
+                downloaded_path = self._download_font_from_url(font_path)
+                if downloaded_path:
+                    font_path = downloaded_path
+                    logger.info(f"Downloaded font to: {font_path}")
+                else:
+                    logger.warning(f"Failed to download font from URL: {font_path}")
+                    return self._return_default_font("Failed to download font from URL", font_list)
+            
             # Validate the font path
             if not self._validate_font_path(font_path):
                 logger.warning(f"Invalid font path: {font_path}")
@@ -116,12 +132,125 @@ class APZmediaFontSelector:
             logger.error(f"Error extracting font from assets: {e}")
             return ""
 
+    def _is_url(self, input_string: str) -> bool:
+        """Check if input string is a URL (including signed URLs)."""
+        if not input_string or not isinstance(input_string, str):
+            return False
+        
+        # Check for common URL patterns including signed URLs
+        url_patterns = [
+            r'^https?://',  # Standard HTTP/HTTPS
+            r'^ftp://',     # FTP
+            r'^s3://',      # S3 URLs
+            r'^gs://',      # Google Cloud Storage
+            r'^azure://',   # Azure Blob Storage
+            r'^blob:',      # Blob URLs
+            r'^data:',      # Data URLs
+        ]
+        
+        for pattern in url_patterns:
+            if re.match(pattern, input_string, re.IGNORECASE):
+                return True
+        
+        # Check for signed URLs (containing query parameters)
+        if '?' in input_string:
+            signed_url_params = [
+                # Standard signed URL parameters
+                'signature=', 'token=', 'expires=', 'access_key=',
+                # AWS S3 signed URL parameters
+                'x-amz-algorithm=', 'x-amz-credential=', 'x-amz-date=',
+                'x-amz-expires=', 'x-amz-signedheaders=', 'x-amz-signature=',
+                # Cloudflare R2 signed URL parameters (same as S3)
+                'x-amz-algorithm=', 'x-amz-credential=', 'x-amz-date=',
+                'x-amz-expires=', 'x-amz-signedheaders=', 'x-amz-signature=',
+                # Google Cloud Storage signed URL parameters
+                'googleaccessid=', 'expires=', 'signature=',
+                # Azure Blob Storage signed URL parameters
+                'sv=', 'sr=', 'sig=', 'st=', 'se=',
+                # Generic signed URL patterns
+                'auth=', 'key=', 'id=', 'secret='
+            ]
+            
+            if any(param in input_string.lower() for param in signed_url_params):
+                return True
+        
+        return False
+
+    def _is_valid_url(self, url: str) -> bool:
+        """Validate URL format and security."""
+        try:
+            parsed = urllib.parse.urlparse(url)
+            
+            # Check scheme (protocol)
+            allowed_protocols = {'https', 'http'}
+            if parsed.scheme not in allowed_protocols:
+                logger.debug(f"Invalid protocol for URL: {url} (scheme: {parsed.scheme})")
+                return False
+            
+            # Check for suspicious patterns
+            suspicious_patterns = [
+                'file://', 'ftp://', 'gopher://', 'data:', 'javascript:',
+                'vbscript:', 'onload=', 'onerror=', 'eval(', 'document.cookie'
+            ]
+            
+            url_lower = url.lower()
+            for pattern in suspicious_patterns:
+                if pattern in url_lower:
+                    logger.debug(f"Suspicious pattern '{pattern}' found in URL: {url}")
+                    return False
+            
+            return True
+        except Exception as e:
+            logger.warning(f"Error parsing or validating URL {url}: {e}")
+            return False
+
+    def _download_font_from_url(self, url: str) -> str:
+        """Download font from URL and return local path."""
+        if not url or not self._is_url(url) or not self._is_valid_url(url):
+            logger.warning(f"Invalid font URL: {url}")
+            return ""
+        
+        try:
+            # Create temporary directory for downloads
+            temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'download_temp')
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # Generate unique filename
+            timestamp = int(time.time())
+            filename = f'font-{timestamp}.ttf'  # Default to TTF, will be corrected if needed
+            file_path = os.path.join(temp_dir, filename)
+            
+            logger.info(f"Downloading font from {url} to {file_path}")
+            
+            # Download the font file
+            response = requests.get(url, stream=True, timeout=30)
+            response.raise_for_status()
+            
+            # Check content type
+            content_type = response.headers.get('content-type', '').lower()
+            if 'font/' not in content_type and 'application/' not in content_type:
+                logger.warning(f"Unexpected content type for font: {content_type}")
+            
+            # Download file
+            with open(file_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            logger.info(f"Downloaded font to: {file_path}")
+            return file_path
+            
+        except Exception as e:
+            logger.error(f"Failed to download font from {url}: {e}")
+            return ""
+
     def _validate_font_path(self, font_path: str) -> bool:
         """
         Validate that the font path exists and is a valid font file.
+        Handles both local file paths and URLs (including signed URLs).
         
         Args:
-            font_path: Path to font file
+            font_path: Path to font file or URL
             
         Returns:
             True if valid, False otherwise
@@ -130,7 +259,25 @@ class APZmediaFontSelector:
             return False
         
         try:
-            # Check if file exists
+            # Check if it's a URL (including signed URLs)
+            if self._is_url(font_path):
+                logger.info(f"Detected font URL, validating: {font_path}")
+                # For URLs, we just validate the URL format and extension
+                if not self._is_valid_url(font_path):
+                    logger.debug(f"Invalid font URL format: {font_path}")
+                    return False
+                
+                # Check if it appears to be a font file
+                supported_extensions = ['.ttf', '.otf', '.woff', '.woff2']
+                font_path_lower = font_path.lower()
+                
+                if not any(ext in font_path_lower for ext in supported_extensions):
+                    logger.debug(f"URL does not appear to be a font file: {font_path}")
+                    return False
+                
+                return True
+            
+            # For local file paths, check if file exists
             if not os.path.exists(font_path):
                 logger.debug(f"Font file does not exist: {font_path}")
                 return False
@@ -154,6 +301,43 @@ class APZmediaFontSelector:
         except Exception as e:
             logger.error(f"Error validating font path {font_path}: {e}")
             return False
+
+    def _extract_font_name_from_url(self, url: str) -> str:
+        """
+        Extract font name from URL.
+        
+        Args:
+            url: URL to font file
+            
+        Returns:
+            Font name string
+        """
+        try:
+            # Parse URL to get path
+            parsed_url = urllib.parse.urlparse(url)
+            path = parsed_url.path
+            
+            # Get filename from path
+            filename = os.path.basename(path)
+            
+            # Remove query parameters if present
+            if '?' in filename:
+                filename = filename.split('?')[0]
+            
+            # Remove extension
+            filename = Path(filename).stem
+            
+            # Clean up the name (remove common prefixes/suffixes)
+            name = filename.replace('_', ' ').replace('-', ' ')
+            
+            # Capitalize words
+            name = ' '.join(word.capitalize() for word in name.split())
+            
+            return name if name else "URL Font"
+            
+        except Exception as e:
+            logger.error(f"Error extracting font name from URL {url}: {e}")
+            return "URL Font"
 
     def _extract_font_name(self, font_path: str) -> str:
         """
@@ -215,7 +399,11 @@ class APZmediaFontSelector:
             for key in font_keys:
                 font_path = brand_assets.get(key, "")
                 if font_path and self._validate_font_path(font_path):
-                    font_name = self._extract_font_name(font_path)
+                    # For URLs, extract name from URL, for local paths use file name
+                    if self._is_url(font_path):
+                        font_name = self._extract_font_name_from_url(font_path)
+                    else:
+                        font_name = self._extract_font_name(font_path)
                     readable_key = key.replace("font_", "").replace("_", " ").title()
                     font_list.append(f"• {readable_key}: {font_name}")
             
