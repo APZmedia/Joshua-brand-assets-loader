@@ -72,8 +72,7 @@ class APZmediaFontSelector:
                     logger.warning(f"Invalid custom font path: {custom_font_path}")
                     return self._return_default_font("Invalid custom font path", font_list)
             
-            for k, v in brand_assets.items():
-                logger.info(f"[FontSelector] brand_assets[{k}]: type={type(v).__name__}, value={v if isinstance(v, str) else '[no string]'}")
+            logger.info(f"[FontSelector] brand_assets keys: {list(brand_assets.keys())}")
             # Extract font path from brand assets
             font_path = self._get_font_from_assets(brand_assets, font_selection)
             logger.info(f"[FontSelector] Valor recibido para {font_selection}: {font_path}")
